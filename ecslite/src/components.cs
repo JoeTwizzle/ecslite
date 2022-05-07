@@ -11,7 +11,7 @@ using System.Runtime.CompilerServices;
 using Unity.IL2CPP.CompilerServices;
 #endif
 
-namespace Leopotam.EcsLite
+namespace EcsLite
 {
     public interface IEcsPool
     {
