@@ -254,7 +254,7 @@ namespace EcsLite
         readonly EcsWorld.Mask _mask;
         readonly EcsPool<T> _components;
 
-        public SingleComponentMask(EcsWorld.Mask mask, EcsPool<T> components)
+        internal SingleComponentMask(EcsWorld.Mask mask, EcsPool<T> components)
         {
             _components = components;
             _mask = mask;
@@ -277,7 +277,7 @@ namespace EcsLite
         readonly EcsFilter _filter;
         readonly EcsPool<T> _components;
 
-        public SingleComponentFilter(EcsFilter filter, EcsPool<T> components)
+        internal SingleComponentFilter(EcsFilter filter, EcsPool<T> components)
         {
             _filter = filter;
             _components = components;
@@ -298,7 +298,7 @@ namespace EcsLite
             readonly int _count;
             int _idx;
 
-            public Enumerator(EcsFilter filter, EcsPool<T> components)
+            internal Enumerator(EcsFilter filter, EcsPool<T> components)
             {
                 _components = components;
                 _filter = filter;

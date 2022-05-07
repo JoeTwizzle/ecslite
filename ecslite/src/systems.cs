@@ -181,6 +181,7 @@ namespace EcsLite
             }
             return null;
         }
+#endif
 
         public void Dispose()
         {
@@ -209,6 +210,5 @@ namespace EcsLite
             _allSystems.Clear();
             _runSystems = null!;
         }
-#endif
     }
 }
