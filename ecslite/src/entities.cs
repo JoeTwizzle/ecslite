@@ -64,7 +64,7 @@ namespace EcsLite
                 sb = new System.Text.StringBuilder(512);
                 for (var i = 0; i < count; i++)
                 {
-                    if (sb.Length > 0) { sb.Append(","); }
+                    if (sb.Length > 0) { sb.Append(','); }
                     sb.Append(types[i].Name);
                 }
             }

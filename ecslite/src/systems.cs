@@ -45,20 +45,18 @@ namespace EcsLite
     [Il2CppSetOption (Option.NullChecks, false)]
     [Il2CppSetOption (Option.ArrayBoundsChecks, false)]
 #endif
-    public class EcsSystems
+    public sealed class EcsSystems : IDisposable
     {
         readonly EcsWorld _defaultWorld;
         readonly Dictionary<string, EcsWorld> _worlds;
         readonly List<IEcsSystem> _allSystems;
-        readonly object? _shared;
-        bool destroyed;
-        [NotNull] IEcsRunSystem[]? _runSystems;
+        IEcsRunSystem[] _runSystems;
         int _runSystemsCount;
 
-        public EcsSystems(EcsWorld defaultWorld, object? shared = null)
+        public EcsSystems(EcsWorld defaultWorld)
         {
+            _runSystems = null!;
             _defaultWorld = defaultWorld;
-            _shared = shared;
             _worlds = new Dictionary<string, EcsWorld>(32);
             _allSystems = new List<IEcsSystem>(128);
         }
@@ -96,12 +94,6 @@ namespace EcsLite
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public T? GetShared<T>() where T : class
-        {
-            return _shared as T;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public EcsWorld? GetWorld(string? name = null)
         {
             if (name == null)
@@ -110,51 +102,6 @@ namespace EcsLite
             }
             _worlds.TryGetValue(name, out var world);
             return world;
-        }
-
-        public void Destroy()
-        {
-            for (var i = _allSystems.Count - 1; i >= 0; i--)
-            {
-                if (_allSystems[i] is IEcsDestroySystem destroySystem)
-                {
-                    destroySystem.Destroy(this);
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
-                    var worldName = CheckForLeakedEntities();
-                    if (worldName != null) { throw new System.Exception($"Empty entity detected in world \"{worldName}\" after {destroySystem.GetType().Name}.Destroy()."); }
-#endif
-                }
-            }
-            for (var i = _allSystems.Count - 1; i >= 0; i--)
-            {
-                if (_allSystems[i] is IEcsPostDestroySystem postDestroySystem)
-                {
-                    postDestroySystem.PostDestroy(this);
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
-                    var worldName = CheckForLeakedEntities();
-                    if (worldName != null) { throw new System.Exception($"Empty entity detected in world \"{worldName}\" after {postDestroySystem.GetType().Name}.PostDestroy()."); }
-#endif
-                }
-            }
-            _allSystems.Clear();
-            _runSystems = null;
-        }
-
-        public void AddWorld(EcsWorld world, string name)
-        {
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
-            if (string.IsNullOrEmpty(name)) { throw new System.Exception("World name cant be null or empty."); }
-#endif
-            _worlds[name] = world;
-        }
-
-        public void Add(IEcsSystem system)
-        {
-            _allSystems.Add(system);
-            if (system is IEcsRunSystem)
-            {
-                _runSystemsCount++;
-            }
         }
 
         public void Init()
@@ -192,6 +139,23 @@ namespace EcsLite
             }
         }
 
+        public void AddWorld(EcsWorld world, string name)
+        {
+#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+            if (string.IsNullOrEmpty(name)) { throw new System.Exception("World name cant be null or empty."); }
+#endif
+            _worlds[name] = world;
+        }
+
+        public void Add(IEcsSystem system)
+        {
+            _allSystems.Add(system);
+            if (system is IEcsRunSystem)
+            {
+                _runSystemsCount++;
+            }
+        }
+
         public void Run()
         {
             for (int i = 0, iMax = _runSystemsCount; i < iMax; i++)
@@ -216,6 +180,34 @@ namespace EcsLite
                 }
             }
             return null;
+        }
+
+        public void Dispose()
+        {
+            for (var i = _allSystems.Count - 1; i >= 0; i--)
+            {
+                if (_allSystems[i] is IEcsDestroySystem destroySystem)
+                {
+                    destroySystem.Destroy(this);
+#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+                    var worldName = CheckForLeakedEntities();
+                    if (worldName != null) { throw new System.Exception($"Empty entity detected in world \"{worldName}\" after {destroySystem.GetType().Name}.Destroy()."); }
+#endif
+                }
+            }
+            for (var i = _allSystems.Count - 1; i >= 0; i--)
+            {
+                if (_allSystems[i] is IEcsPostDestroySystem postDestroySystem)
+                {
+                    postDestroySystem.PostDestroy(this);
+#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+                    var worldName = CheckForLeakedEntities();
+                    if (worldName != null) { throw new System.Exception($"Empty entity detected in world \"{worldName}\" after {postDestroySystem.GetType().Name}.PostDestroy()."); }
+#endif
+                }
+            }
+            _allSystems.Clear();
+            _runSystems = null!;
         }
 #endif
     }

@@ -19,7 +19,7 @@ namespace EcsLite
     [Il2CppSetOption (Option.NullChecks, false)]
     [Il2CppSetOption (Option.ArrayBoundsChecks, false)]
 #endif
-    public class EcsWorld
+    public sealed class EcsWorld : IDisposable
     {
         internal EntityData[] Entities;
         private int _entitiesCount;
@@ -36,10 +36,10 @@ namespace EcsLite
         private List<EcsFilter>[] _filtersByExcludedComponents;
         private Mask[] _masks;
         private int _masksCount;
-        private bool _destroyed;
+        private bool _disposed;
 
 #if DEBUG || LEOECSLITE_WORLD_EVENTS
-        List<IEcsWorldEventListener> _eventListeners;
+        readonly List<IEcsWorldEventListener> _eventListeners;
 
         public void AddEventListener(IEcsWorldEventListener listener)
         {
@@ -114,15 +114,15 @@ namespace EcsLite
 #if DEBUG || LEOECSLITE_WORLD_EVENTS
             _eventListeners = new List<IEcsWorldEventListener>(4);
 #endif
-            _destroyed = false;
+            _disposed = false;
         }
 
-        public void Destroy()
+        public void Dispose()
         {
 #if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
-            if (CheckForLeakedEntities()) { throw new Exception($"Empty entity detected before EcsWorld.Destroy()."); }
+            if (CheckForLeakedEntities()) { throw new Exception($"Empty entity detected before EcsWorld.Dispose()."); }
 #endif
-            _destroyed = true;
+            _disposed = true;
             for (var i = _entitiesCount - 1; i >= 0; i--)
             {
                 ref var entityData = ref Entities[i];
@@ -140,7 +140,7 @@ namespace EcsLite
 #if DEBUG || LEOECSLITE_WORLD_EVENTS
             for (var ii = _eventListeners.Count - 1; ii >= 0; ii--)
             {
-                _eventListeners[ii].OnWorldDestroyed(this);
+                _eventListeners[ii].OnWorldDisposed(this);
             }
 #endif
         }
@@ -148,7 +148,7 @@ namespace EcsLite
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool IsAlive()
         {
-            return !_destroyed;
+            return !_disposed;
         }
 
         public int NewEntity()
@@ -346,10 +346,17 @@ namespace EcsLite
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Mask Filter<T>() where T : struct
+        public Mask FilterInc<T>() where T : struct
         {
             var mask = _masksCount > 0 ? _masks[--_masksCount] : new Mask(this);
             return mask.Inc<T>();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Mask FilterExc<T>() where T : struct
+        {
+            var mask = _masksCount > 0 ? _masks[--_masksCount] : new Mask(this);
+            return mask.Exc<T>();
         }
 
         public int GetComponents(int entity, ref object[]? list)
@@ -686,7 +693,7 @@ namespace EcsLite
         void OnEntityDestroyed(int entity);
         void OnFilterCreated(EcsFilter filter);
         void OnWorldResized(int newSize);
-        void OnWorldDestroyed(EcsWorld world);
+        void OnWorldDisposed(EcsWorld world);
     }
 #endif
 }

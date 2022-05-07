@@ -25,17 +25,17 @@ namespace EcsLite
 #endif
     public sealed class EcsFilter
     {
-        readonly EcsWorld _world;
-        readonly EcsWorld.Mask _mask;
-        int[] _denseEntities;
-        int _entitiesCount;
+        private readonly EcsWorld _world;
+        private readonly EcsWorld.Mask _mask;
+        private int[] _denseEntities;
+        private int _entitiesCount;
         internal int[] SparseEntities;
-        int _lockCount;
-        DelayedOp[] _delayedOps;
-        int _delayedOpsCount;
+        private int _lockCount;
+        private DelayedOp[] _delayedOps;
+        private int _delayedOpsCount;
 #if LEOECSLITE_FILTER_EVENTS
-        IEcsFilterEventListener[] _eventListeners = new IEcsFilterEventListener[4];
-        int _eventListenersCount;
+      private  IEcsFilterEventListener[] _eventListeners = new IEcsFilterEventListener[4];
+      private  int _eventListenersCount;
 #endif
 
         internal EcsFilter(EcsWorld world, EcsWorld.Mask mask, int denseCapacity, int sparseCapacity)
