@@ -66,7 +66,7 @@ namespace EcsLite
         }
 #endif
 #if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
-        readonly List<int> _leakedEntities = new List<int>(512);
+        private readonly List<int> _leakedEntities = new List<int>(512);
 
         internal bool CheckForLeakedEntities()
         {
@@ -275,7 +275,7 @@ namespace EcsLite
         public void AllowPool<T>() where T : struct
         {
             var poolType = typeof(T);
-            if (_poolHashes.TryGetValue(poolType, out _))
+            if (_poolHashes.ContainsKey(poolType))
             {
                 throw new InvalidOperationException($"This world already allows pool<{nameof(T)}>");
             }
@@ -299,7 +299,7 @@ namespace EcsLite
             {
                 return (EcsPool<T>)rawPool;
             }
-            throw new InvalidOperationException($"This world does not allow pool<{nameof(T)}>");
+            throw new InvalidOperationException($"This world does not allow a pool<{typeof(T).FullName}>");
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -401,7 +401,7 @@ namespace EcsLite
             return entity >= 0 && entity < _entitiesCount && Entities[entity].Gen > 0;
         }
 
-        (EcsFilter?, bool) GetFilterInternal(Mask mask, int capacity = 512)
+        private (EcsFilter?, bool) GetFilterInternal(Mask mask, int capacity = 512)
         {
             var hash = mask.Hash;
             var exists = _hashedFilters.TryGetValue(hash, out var filter);
@@ -518,7 +518,7 @@ namespace EcsLite
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        bool IsMaskCompatible(Mask filterMask, int entity)
+        private bool IsMaskCompatible(Mask filterMask, int entity)
         {
             for (int i = 0, iMax = filterMask.IncludeCount; i < iMax; i++)
             {
@@ -538,7 +538,7 @@ namespace EcsLite
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        bool IsMaskCompatibleWithout(Mask filterMask, int entity, int componentId)
+        private bool IsMaskCompatibleWithout(Mask filterMask, int entity, int componentId)
         {
             for (int i = 0, iMax = filterMask.IncludeCount; i < iMax; i++)
             {
@@ -662,7 +662,10 @@ namespace EcsLite
                     Hash = unchecked(Hash * 314159 - Exclude[i]);
                 }
                 var (filter, isNew) = _world.GetFilterInternal(this, capacity);
-                if (!isNew) { Recycle(); }
+                if (!isNew)
+                {
+                    Recycle();
+                }
                 return filter;
             }
 

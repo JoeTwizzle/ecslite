@@ -25,9 +25,13 @@ namespace EcsLite
         Type GetComponentType();
     }
 
-    public interface IEcsAutoReset<T> where T : struct
+    public interface IEcsInit<T> where T : struct
     {
-        void AutoReset(ref T c);
+        static abstract void OnInit(ref T c);
+    }
+    public interface IEcsDestroy<T> where T : struct
+    {
+        static abstract void OnDestroy(ref T c);
     }
 
 #if ENABLE_IL2CPP
@@ -36,18 +40,19 @@ namespace EcsLite
 #endif
     public sealed class EcsPool<T> : IEcsPool where T : struct
     {
-        readonly Type _type;
-        readonly EcsWorld _world;
-        readonly int _id;
-        readonly AutoResetHandler? _autoReset;
+        private readonly Type _type;
+        private readonly EcsWorld _world;
+        private readonly int _id;
+        private readonly unsafe delegate* managed<ref T, void> _autoResetInit;
+        private readonly unsafe delegate* managed<ref T, void> _autoResetDestroy;
         // 1-based index.
-        T[] _denseItems;
-        int[] _sparseItems;
-        int _denseItemsCount;
-        int[] _recycledItems;
-        int _recycledItemsCount;
+        private T[] _denseItems;
+        private int[] _sparseItems;
+        private int _denseItemsCount;
+        private int[] _recycledItems;
+        private int _recycledItemsCount;
 #if ENABLE_IL2CPP && !UNITY_EDITOR
-        T _autoresetFakeInstance;
+      protected  T _autoresetFakeInstance;
 #endif
 
         internal EcsPool(EcsWorld world, int id, int denseCapacity, int sparseCapacity, int recycledCapacity)
@@ -60,32 +65,16 @@ namespace EcsLite
             _denseItemsCount = 1;
             _recycledItems = new int[recycledCapacity];
             _recycledItemsCount = 0;
-
-            var isAutoReset = typeof(IEcsAutoReset<T>).IsAssignableFrom(_type);
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
-            if (!isAutoReset && _type.GetInterface("IEcsAutoReset`1") != null)
+            unsafe
             {
-                throw new Exception($"IEcsAutoReset should have <{typeof(T).Name}> constraint for component \"{typeof(T).Name}\".");
-            }
-#endif
-            if (isAutoReset)
-            {
-                var autoResetMethod = typeof(T).GetMethod(nameof(IEcsAutoReset<T>.AutoReset));
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
-                if (autoResetMethod == null)
+                if (typeof(IEcsInit<T>).IsAssignableFrom(_type))
                 {
-                    throw new Exception(
-                        $"IEcsAutoReset<{typeof(T).Name}> explicit implementation not supported, use implicit instead.");
+                    _autoResetInit = (delegate*<ref T, void>)typeof(T).GetMethod(nameof(IEcsInit<T>.OnInit))!.MethodHandle.GetFunctionPointer();
                 }
-#endif
-                _autoReset = (AutoResetHandler)Delegate.CreateDelegate(
-                    typeof(AutoResetHandler),
-#if ENABLE_IL2CPP && !UNITY_EDITOR
-                    _autoresetFakeInstance,
-#else
-                    null,
-#endif
-                    autoResetMethod);
+                if (typeof(IEcsDestroy<T>).IsAssignableFrom(_type))
+                {
+                    _autoResetDestroy = (delegate*<ref T, void>)typeof(T).GetMethod(nameof(IEcsDestroy<T>.OnDestroy))!.MethodHandle.GetFunctionPointer();
+                }
             }
         }
 
@@ -188,7 +177,13 @@ namespace EcsLite
                     Array.Resize(ref _denseItems, _denseItemsCount << 1);
                 }
                 _denseItemsCount++;
-                _autoReset?.Invoke(ref _denseItems[idx]);
+            }
+            unsafe //Init component on creation or recycle
+            {
+                if (_autoResetInit != null)
+                {
+                    _autoResetInit(ref _denseItems[idx]);
+                }
             }
             _sparseItems[entity] = idx;
             _world.OnEntityChangeInternal(entity, _id, true);
@@ -232,14 +227,15 @@ namespace EcsLite
                     Array.Resize(ref _recycledItems, _recycledItemsCount << 1);
                 }
                 _recycledItems[_recycledItemsCount++] = sparseData;
-                if (_autoReset != null)
+                unsafe //Destroy component on destroy
                 {
-                    _autoReset.Invoke(ref _denseItems[sparseData]);
+                    if (_autoResetDestroy != null)
+                    {
+                        _autoResetDestroy(ref _denseItems[sparseData]);
+                    }
                 }
-                else
-                {
-                    _denseItems[sparseData] = default;
-                }
+                // Reset to default
+                _denseItems[sparseData] = default;
                 sparseData = 0;
                 ref var entityData = ref _world.Entities[entity];
                 entityData.ComponentsCount--;
@@ -252,7 +248,5 @@ namespace EcsLite
                 }
             }
         }
-
-        delegate void AutoResetHandler(ref T component);
     }
 }
