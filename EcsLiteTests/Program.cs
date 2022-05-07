@@ -33,11 +33,20 @@ class Program
         EcsWorld world = new EcsWorld();
         world.AllowPool<InitStruct>();
         world.AllowPool<NormalStruct>();
-        //world.AllowPool<CTORStruct>();
+        world.AllowPool<CTORStruct>();
         int ent = world.NewEntity();
+        int ent2 = world.NewEntity();
         ref var init = ref world.GetPool<InitStruct>().Add(ent);
-        ref var norm = ref world.GetPool<NormalStruct>().Add(ent);
-        ref var ctor = ref world.GetPool<CTORStruct>().Add(ent);
+        ref var norm = ref world.GetPool<NormalStruct>().Add(ent2);
+        ref var ctor = ref world.GetPool<CTORStruct>().Add(ent2);
+        Console.WriteLine(init.a);
+        Console.WriteLine(norm.a);
+        Console.WriteLine(ctor.a);
+        var initFilter = world.ForAll<InitStruct>().Exc<NormalStruct>().Exc<CTORStruct>().End();
+        foreach (ref var item in initFilter)
+        {
+            item.a++;
+        }
         Console.WriteLine(init.a);
         Console.WriteLine(norm.a);
         Console.WriteLine(ctor.a);

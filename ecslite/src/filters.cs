@@ -5,6 +5,7 @@
 // ----------------------------------------------------------------------------
 
 using System;
+using System.Collections;
 using System.Runtime.CompilerServices;
 
 #if ENABLE_IL2CPP
@@ -77,8 +78,14 @@ namespace EcsLite
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Enumerator GetEnumerator()
         {
-            _lockCount++;
+            Lock();
             return new Enumerator(this);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void Lock()
+        {
+            _lockCount++;
         }
 
 #if LEOECSLITE_FILTER_EVENTS
@@ -163,7 +170,7 @@ namespace EcsLite
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void Unlock()
+        internal void Unlock()
         {
 #if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
             if (_lockCount <= 0) { throw new Exception($"Invalid lock-unlock balance for \"{GetType().Name}\"."); }
@@ -239,6 +246,84 @@ namespace EcsLite
         {
             public bool Added;
             public int Entity;
+        }
+    }
+
+    public ref struct SingleComponentMask<T> where T : struct
+    {
+        readonly EcsWorld.Mask _mask;
+        readonly EcsPool<T> _components;
+
+        public SingleComponentMask(EcsWorld.Mask mask, EcsPool<T> components)
+        {
+            _components = components;
+            _mask = mask;
+        }
+
+        public SingleComponentMask<T> Exc<ExcludeType>() where ExcludeType : struct
+        {
+            _mask.Exc<ExcludeType>();
+            return this;
+        }
+
+        public SingleComponentFilter<T> End()
+        {
+            return new SingleComponentFilter<T>(_mask.End(), _components);
+        }
+    }
+
+    public struct SingleComponentFilter<T> where T : struct
+    {
+        readonly EcsFilter _filter;
+        readonly EcsPool<T> _components;
+
+        public SingleComponentFilter(EcsFilter filter, EcsPool<T> components)
+        {
+            _filter = filter;
+            _components = components;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Enumerator GetEnumerator()
+        {
+            _filter.Lock();
+            return new Enumerator(_filter, _components);
+        }
+
+        public struct Enumerator : IDisposable
+        {
+            readonly EcsFilter _filter;
+            readonly EcsPool<T> _components;
+            readonly int[] _entities;
+            readonly int _count;
+            int _idx;
+
+            public Enumerator(EcsFilter filter, EcsPool<T> components)
+            {
+                _components = components;
+                _filter = filter;
+                _entities = filter.GetRawEntities();
+                _count = filter.GetEntitiesCount();
+                _idx = -1;
+            }
+
+            public ref T Current
+            {
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                get => ref _components.Get(_entities[_idx]);
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public bool MoveNext()
+            {
+                return ++_idx < _count;
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public void Dispose()
+            {
+                _filter.Unlock();
+            }
         }
     }
 }

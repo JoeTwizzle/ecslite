@@ -346,6 +346,13 @@ namespace EcsLite
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public SingleComponentMask<T> ForAll<T>() where T : struct
+        {
+            var mask = _masksCount > 0 ? _masks[--_masksCount] : new Mask(this);
+            return new SingleComponentMask<T>(mask.Inc<T>(), GetPool<T>());
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Mask FilterInc<T>() where T : struct
         {
             var mask = _masksCount > 0 ? _masks[--_masksCount] : new Mask(this);
@@ -401,11 +408,10 @@ namespace EcsLite
             return entity >= 0 && entity < _entitiesCount && Entities[entity].Gen > 0;
         }
 
-        private (EcsFilter?, bool) GetFilterInternal(Mask mask, int capacity = 512)
+        private (EcsFilter, bool) GetFilterInternal(Mask mask, int capacity = 512)
         {
             var hash = mask.Hash;
-            var exists = _hashedFilters.TryGetValue(hash, out var filter);
-            if (exists)
+            if (_hashedFilters.TryGetValue(hash, out var filter))
             {
                 return (filter, false);
             }
@@ -643,7 +649,7 @@ namespace EcsLite
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public EcsFilter? End(int capacity = 512)
+            public EcsFilter End(int capacity = 512)
             {
 #if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
                 if (_built) { throw new Exception("Cant change built mask."); }
@@ -686,6 +692,11 @@ namespace EcsLite
             public short Gen;
             public short ComponentsCount;
         }
+    }
+
+    struct ForAllIterator
+    {
+
     }
 
 #if DEBUG || LEOECSLITE_WORLD_EVENTS
