@@ -2,6 +2,7 @@
 .vscode
 .idea
 .DS_Store
+.vs
 bin
 obj
 Library
