@@ -1,4 +1,5 @@
 ﻿using EcsLite;
+using System.Runtime.CompilerServices;
 
 struct InitStruct : IEcsInit<InitStruct>, IEcsDestroy<InitStruct>
 {
