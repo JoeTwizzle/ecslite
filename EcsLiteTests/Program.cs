@@ -4,7 +4,7 @@ using System.Runtime.CompilerServices;
 struct InitStruct : IEcsInit<InitStruct>, IEcsDestroy<InitStruct>
 {
     public int a;
-
+    public string b;
     public static void OnDestroy(ref InitStruct c)
     {
         c.a = 0;
@@ -46,47 +46,65 @@ class Program
         systems.Add(new TestRunSystemB());
         systems.Add(new TestRunSystemC());
         systems.Add(new TestRunSystemD());
+        systems.Add(new TestRunSystemE());
         systems.Init();
         for (int i = 0; i < 10; i++)
         {
             systems.Run();
         }
-
+        systems.Dispose();
         Console.ReadLine();
         return 0;
     }
 }
 
-[EcsWrite(typeof(Console))]
+[EcsWrite("Console")]
 class TestRunSystemA : IEcsRunSystem
 {
-    public void Run(EcsSystems systems)
+    public void Run(EcsSystems systems, int id)
     {
-        Console.WriteLine("Running A");
+        Console.WriteLine($"Running A {id}");
     }
 }
-[EcsWrite(typeof(Console), typeof(int))]
+[EcsWrite("Console", typeof(int))]
 class TestRunSystemB : IEcsRunSystem
 {
-    public void Run(EcsSystems systems)
+    public void Run(EcsSystems systems, int id)
     {
-        Console.WriteLine("Running B");
+        Console.WriteLine($"Running B {id}");
     }
 }
-[EcsWrite(typeof(Console))]
+[EcsWrite("Test", typeof(int))]
 class TestRunSystemC : IEcsRunSystem
 {
-    public void Run(EcsSystems systems)
+    public void Run(EcsSystems systems, int id)
     {
-        Console.WriteLine("Running C");
+        Console.WriteLine($"Running C {id}");
     }
 }
-[EcsRead(typeof(int))]
-class TestRunSystemD : IEcsRunSystem
+
+[EcsRead("Test", typeof(int))]
+class TestRunSystemD : IEcsRunSystem, IEcsInitSystem
 {
-    public void Run(EcsSystems systems)
+    EcsPool<InitStruct> pool;
+    EcsFilter filter;
+
+    public void Init(EcsSystems systems)
     {
-        Console.WriteLine("Running D");
+        pool = systems.GetWorld().GetPool<InitStruct>();
+    }
+
+    public void Run(EcsSystems systems, int id)
+    {
+        Console.WriteLine($"Running D {id}");
+    }
+}
+[EcsWrite("Test", typeof(float))]
+class TestRunSystemE : IEcsRunSystem
+{
+    public void Run(EcsSystems systems, int id)
+    {
+        Console.WriteLine($"Running E {id}");
     }
 }
 

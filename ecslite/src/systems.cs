@@ -5,6 +5,7 @@
 // ----------------------------------------------------------------------------
 
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
@@ -28,7 +29,7 @@ namespace EcsLite
 
     public interface IEcsRunSystem : IEcsSystem
     {
-        void Run(EcsSystems systems);
+        void Run(EcsSystems systems, int threadId);
     }
 
     public interface IEcsDestroySystem : IEcsSystem
@@ -45,27 +46,29 @@ namespace EcsLite
     [Il2CppSetOption (Option.NullChecks, false)]
     [Il2CppSetOption (Option.ArrayBoundsChecks, false)]
 #endif
-    [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
+    [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = true)]
     public sealed class EcsWriteAttribute : Attribute
     {
-        // This is a positional argument
-        public EcsWriteAttribute(params Type[]? types)
-        {
-            WrittenTypes = types?.Distinct() ?? Array.Empty<Type>();
-        }
+        public readonly string World;
+        public readonly Type[] Pools;
 
-        public IEnumerable<Type> WrittenTypes { get; }
+        public EcsWriteAttribute(string world, params Type[]? pools)
+        {
+            World = world;
+            Pools = pools?.Distinct().ToArray() ?? Array.Empty<Type>();
+        }
     }
-    [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
+    [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = true)]
     public sealed class EcsReadAttribute : Attribute
     {
-        // This is a positional argument
-        public EcsReadAttribute(params Type[]? types)
-        {
-            ReadTypes = types?.Distinct() ?? Array.Empty<Type>();
-        }
+        public readonly string World;
+        public readonly Type[] Pools;
 
-        public IEnumerable<Type> ReadTypes { get; }
+        public EcsReadAttribute(string world, params Type[]? pools)
+        {
+            World = world;
+            Pools = pools?.Distinct().ToArray() ?? Array.Empty<Type>();
+        }
     }
 
     public sealed class EcsSystems : IDisposable
@@ -87,9 +90,9 @@ namespace EcsLite
             _numThreads = numThreads;
             _bucketCount = 0;
             _buckets = new SystemsBucket[4];
-            _threads = new Thread[_numThreads];
-            _barrier = new Barrier(_numThreads + 1);
-            for (int i = 0; i < _numThreads; i++)
+            _threads = new Thread[_numThreads - 1];
+            _barrier = new Barrier(_numThreads);
+            for (int i = 0; i < _threads.Length; i++)
             {
                 _threads[i] = new Thread(WorkerLoopThreads)
                 {
@@ -120,14 +123,14 @@ namespace EcsLite
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public EcsWorld? GetWorld(string? name = null)
+        public EcsWorld GetWorld(string? name = null)
         {
             if (name == null)
             {
                 return _defaultWorld;
             }
             _worlds.TryGetValue(name, out var world);
-            return world;
+            return world!;
         }
 
         public void Init()
@@ -154,7 +157,7 @@ namespace EcsLite
 #endif
                 }
             }
-            for (int i = 0; i < _numThreads; i++)
+            for (int i = 0; i < _threads.Length; i++)
             {
                 _threads[i].Start(i + 1);
             }
@@ -218,13 +221,15 @@ namespace EcsLite
             if (canAdd)
             {
                 ref var bucket = ref _buckets[bestFitIndex];
-                bucket.Add(system);
+                bucket.GetFitMetric(system);
+                bucket.AddUnchecked(system);
             }
             else
             {
                 _bucketCount++;
                 EnsureBucketsSize();
-                _buckets[_bucketCount - 1].Add(system);
+                _buckets[_bucketCount - 1].GetFitMetric(system);
+                _buckets[_bucketCount - 1].AddUnchecked(system);
             }
         }
 
@@ -244,9 +249,10 @@ namespace EcsLite
 
             for (int i = 0; i < _bucketCount; i++)
             {
+                //Wait for activation
+                _barrier.SignalAndWait();
                 DoWork(0);
                 //Set next working bucket
-                Console.WriteLine("Incrementing!");
                 Interlocked.Increment(ref _currentBucket);
             }
         }
@@ -254,13 +260,9 @@ namespace EcsLite
         [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         void DoWork(int threadId)
         {
-            Console.WriteLine($"{threadId} Waiting for signal");
-            //Wait for activation
-            _barrier.SignalAndWait();
-            Console.WriteLine($"{threadId} Dispatching");
             var systems = _buckets[_currentBucket].parallelRunSystems;
             int count = systems.Count;
-            int systemsPerThread = Math.DivRem(count, _numThreads + 1, out var remainder);
+            int systemsPerThread = Math.DivRem(count, _threads.Length + 1, out var remainder);
             if (remainder != 0)
             {
                 systemsPerThread++;
@@ -273,10 +275,8 @@ namespace EcsLite
                 {
                     break;
                 }
-                systems[index].Run(this);
+                systems[index].Run(this, threadId);
             }
-            Console.WriteLine($"{threadId} Waiting for other");
-            _barrier.SignalAndWait();
         }
 
         void WorkerLoopThreads(object id)
@@ -284,6 +284,12 @@ namespace EcsLite
             while (!_disposed)
             {
                 int threadId = (int)id;
+                //Wait for activation
+                _barrier.SignalAndWait();
+                if (_disposed)
+                {
+                    return;
+                }
                 DoWork(threadId);
             }
         }
@@ -330,17 +336,18 @@ namespace EcsLite
             }
             _allSystems.Clear();
             _disposed = true;
-            for (int i = 0; i < _numThreads; i++)
+            _barrier.SignalAndWait();
+            for (int i = 0; i < _threads.Length; i++)
             {
                 _threads[i].Join();
             }
             _barrier.Dispose();
         }
-        private struct Metric
+        private readonly struct Metric
         {
             public static readonly Metric Invalid = new Metric(0, false);
-            public int SharedReads;
-            public bool Allowed;
+            public readonly int SharedReads;
+            public readonly bool Allowed;
 
             public Metric(int sharedReads, bool allowed)
             {
@@ -351,8 +358,8 @@ namespace EcsLite
         private struct SystemsBucket
         {
             public List<IEcsRunSystem> parallelRunSystems;
-            HashSet<Type> writeTypes;
-            HashSet<Type> readTypes;
+            Dictionary<string, HashSet<Type>?> writeTypes;
+            Dictionary<string, HashSet<Type>?> readTypes;
             public Metric GetFitMetric(IEcsRunSystem system)
             {
                 if (parallelRunSystems == null)
@@ -361,85 +368,192 @@ namespace EcsLite
                 }
                 if (writeTypes == null)
                 {
-                    writeTypes = new HashSet<Type>();
+                    writeTypes = new Dictionary<string, HashSet<Type>?>();
                 }
                 if (readTypes == null)
                 {
-                    readTypes = new HashSet<Type>();
+                    readTypes = new Dictionary<string, HashSet<Type>?>();
                 }
-                EcsReadAttribute? readAttribute = Attribute.GetCustomAttribute(system.GetType(), typeof(EcsReadAttribute)) as EcsReadAttribute;
-                EcsWriteAttribute? writeAttribute = Attribute.GetCustomAttribute(system.GetType(), typeof(EcsWriteAttribute)) as EcsWriteAttribute;
+                EcsReadAttribute[]? readAttributes = Attribute.GetCustomAttributes(system.GetType(), typeof(EcsReadAttribute)) as EcsReadAttribute[];
+                EcsWriteAttribute[]? writeAttributes = Attribute.GetCustomAttributes(system.GetType(), typeof(EcsWriteAttribute)) as EcsWriteAttribute[];
+                //We want to write to items
+                if (writeAttributes is not null)
+                {
+                    if (!CheckWriteAttribute(writeAttributes))
+                    {
+                        return Metric.Invalid;
+                    }
+                }
 
-                if (readAttribute is not null)
+                //We want to read items
+                if (readAttributes is not null)
                 {
-                    foreach (var type in readAttribute.ReadTypes)
+                    if (!CheckReadAttribute(readAttributes))
                     {
-                        if (writeTypes.Contains(type))
+                        return Metric.Invalid;
+                    }
+
+                    //All good can add system
+                    int sharedReads = 0;
+                    foreach (var item in readAttributes)
+                    {
+                        if (readTypes.TryGetValue(item.World, out var worldTypes))
                         {
-                            return Metric.Invalid;
+                            //count number of shared reads
+                            foreach (var type in item.Pools)
+                            {
+                                if (worldTypes!.Contains(type))
+                                {
+                                    sharedReads++;
+                                }
+                            }
                         }
                     }
+                    return new Metric(sharedReads, true);
                 }
-                if (writeAttribute is not null)
-                {
-                    foreach (var type in writeAttribute.WrittenTypes)
-                    {
-                        //Cannot read and write at the same time
-                        if (readTypes.Contains(type))
-                        {
-                            return Metric.Invalid;
-                        }
-                        //Cannot write and write at the same time
-                        if (writeTypes.Contains(type))
-                        {
-                            return Metric.Invalid;
-                        }
-                    }
-                }
-                int sharedReads = 0;
-                //All good can add system
-                if (readAttribute is not null)
-                {
-                    foreach (var type in readAttribute.ReadTypes)
-                    {
-                        if (readTypes.Contains(type))
-                        {
-                            sharedReads++;
-                        }
-                    }
-                }
-                return new Metric(sharedReads, true);
+                return new Metric(0, true);
             }
 
-            public void Add(IEcsRunSystem system)
+            bool CheckReadAttribute(EcsReadAttribute[] attributes)
+            {
+                //for all (world, type[]) pairs
+                foreach (var item in attributes)
+                {
+                    //check if world exists and contains types being written to 
+                    if (writeTypes.TryGetValue(item.World, out var worldTypes))
+                    {
+                        //This world exists but the hashset is null
+                        //This implies that the entire world is being used
+                        if (worldTypes is null)
+                        {
+                            return false;
+                        }
+                        //The hashset contains some amount of types, but we want to use all of the types
+                        if (item.Pools.Length == 0)
+                        {
+                            return false;
+                        }
+                        //for all types check if we are already writing to it
+                        foreach (var type in item.Pools)
+                        {
+                            //if we are, we can't fit in this bucket
+                            if (worldTypes.Contains(type))
+                            {
+                                return false;
+                            }
+                        }
+                    }
+                }
+                return true;
+            }
+
+            bool CheckWriteAttribute(EcsWriteAttribute[] attributes)
+            {
+                //for all (world, type[]) pairs
+                foreach (var item in attributes)
+                {
+                    //check if world exists and contains types being read from
+                    if (readTypes.TryGetValue(item.World, out var worldTypes))
+                    {
+                        //This world exists but the hashset is null
+                        //This implies that the entire world is being used
+                        if (worldTypes is null)
+                        {
+                            return false;
+                        }
+                        //The hashset contains some amount of types, but we want to use all of the types
+                        if (item.Pools.Length == 0)
+                        {
+                            return false;
+                        }
+                        //for all types check if we are already reading from it
+                        foreach (var type in item.Pools)
+                        {
+                            //if we are, we can't fit in this bucket
+                            if (worldTypes.Contains(type))
+                            {
+                                return false;
+                            }
+                        }
+                    }
+
+                    //check if world exists and contains types being written to
+                    if (writeTypes.TryGetValue(item.World, out worldTypes))
+                    {
+                        //This world exists but the hashset is null
+                        //This implies that the entire world is being used
+                        if (worldTypes is null)
+                        {
+                            return false;
+                        }
+                        //The hashset contains some amount of types, but we want to use all of the types
+                        if (item.Pools.Length == 0)
+                        {
+                            return false;
+                        }
+                        //for all types check if we are already writing to it
+                        foreach (var type in item.Pools)
+                        {
+                            //if we are, we can't fit in this bucket
+                            if (worldTypes.Contains(type))
+                            {
+                                return false;
+                            }
+                        }
+                    }
+                }
+                return true;
+            }
+
+
+            public void AddUnchecked(IEcsRunSystem system)
             {
                 if (parallelRunSystems == null)
                 {
                     parallelRunSystems = new List<IEcsRunSystem>();
                 }
-                if (writeTypes == null)
-                {
-                    writeTypes = new HashSet<Type>();
-                }
-                if (readTypes == null)
-                {
-                    readTypes = new HashSet<Type>();
-                }
-                EcsReadAttribute? readAttribute = Attribute.GetCustomAttribute(system.GetType(), typeof(EcsReadAttribute)) as EcsReadAttribute;
-                EcsWriteAttribute? writeAttribute = Attribute.GetCustomAttribute(system.GetType(), typeof(EcsWriteAttribute)) as EcsWriteAttribute;
 
-                if (readAttribute is not null)
+                EcsReadAttribute[]? readAttributes = Attribute.GetCustomAttributes(system.GetType(), typeof(EcsReadAttribute)) as EcsReadAttribute[];
+                EcsWriteAttribute[]? writeAttributes = Attribute.GetCustomAttributes(system.GetType(), typeof(EcsWriteAttribute)) as EcsWriteAttribute[];
+
+                if (readAttributes is not null)
                 {
-                    foreach (var type in readAttribute.ReadTypes)
+                    foreach (var item in readAttributes)
                     {
-                        readTypes.Add(type);
+                        if (item.Pools.Length == 0)
+                        {
+                            writeTypes.Add(item.World, null);
+                            continue;
+                        }
+                        //check if world exists and contains types being written to
+                        if (!readTypes.TryGetValue(item.World, out var worldTypes))
+                        {
+                            worldTypes = new HashSet<Type>();
+                        }
+                        foreach (var type in item.Pools)
+                        {
+                            worldTypes!.Add(type);
+                        }
                     }
                 }
-                if (writeAttribute is not null)
+                if (writeAttributes is not null)
                 {
-                    foreach (var type in writeAttribute.WrittenTypes)
+                    foreach (var item in writeAttributes)
                     {
-                        writeTypes.Add(type);
+                        if (item.Pools.Length == 0)
+                        {
+                            writeTypes.Add(item.World, null);
+                            continue;
+                        }
+                        //check if world exists and contains types being written to
+                        if (!writeTypes.TryGetValue(item.World, out var worldTypes))
+                        {
+                            worldTypes = new HashSet<Type>();
+                        }
+                        foreach (var type in item.Pools)
+                        {
+                            Debug.Assert(worldTypes!.Add(type));
+                        }
                     }
                 }
                 parallelRunSystems.Add(system);

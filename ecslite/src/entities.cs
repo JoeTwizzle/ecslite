@@ -24,6 +24,7 @@ namespace EcsLite
         internal int Id;
         internal int Gen;
         internal EcsWorld World;
+
 #if DEBUG
         // For using in IDE debugger.
         internal object[]? DebugComponentsView
