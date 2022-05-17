@@ -3,7 +3,7 @@ Performance, zero/small memory allocations/footprint, no dependencies on any gam
 
 > **Important!** Don't forget to use `DEBUG` builds for development and `RELEASE` builds in production: all internal error checks / exception throwing work only in `DEBUG` builds and removed for performance reasons in `RELEASE`.
 
-> **Important!** LeoEcsLite API **is not thread safe** and will never be! If you need multithread-processing - you should implement it on your side as part of ecs-system.
+> **Important!** LeoEcsLite API **is not thread safe** and will never be!
 
 # Table of content
 * [Socials](#socials)
