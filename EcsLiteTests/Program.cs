@@ -1,4 +1,6 @@
 ﻿using EcsLite;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 struct InitStruct : IEcsInit<InitStruct>, IEcsDestroy<InitStruct>
@@ -40,19 +42,32 @@ class Program
         ref var init = ref world.GetPool<InitStruct>().Add(ent);
         ref var norm = ref world.GetPool<NormalStruct>().Add(ent2);
         ref var ctor = ref world.GetPool<CTORStruct>().Add(ent2);
-
-        EcsSystems systems = new EcsSystems(4, world);
-        systems.Add(new TestRunSystemA());
-        systems.Add(new TestRunSystemB());
-        systems.Add(new TestRunSystemC());
-        systems.Add(new TestRunSystemD());
-        systems.Add(new TestRunSystemE());
-        systems.Init();
-        for (int i = 0; i < 10; i++)
-        {
-            systems.Run();
-        }
-        systems.Dispose();
+        var normPool = world.GetPool<NormalStruct>();
+        var initPool = world.GetPool<InitStruct>();
+        initPool.Transfer(ent, ent2);
+        Console.WriteLine(!initPool.Has(ent));
+        Console.WriteLine(initPool.Has(ent2));
+        normPool.Clone(ent2, ent);
+        norm.a = 100;
+        Console.WriteLine(normPool.Has(ent));
+        Console.WriteLine(normPool.Has(ent2));
+        Console.WriteLine(normPool.Get(ent).a);
+        Console.WriteLine(normPool.Get(ent2).a);
+        normPool.Swap(ent2, ent);
+        Console.WriteLine(normPool.Get(ent).a);
+        Console.WriteLine(normPool.Get(ent2).a);
+        //EcsSystems systems = new EcsSystems(6, world);
+        //systems.Add(new TestRunSystemA());
+        //systems.Add(new TestRunSystemB());
+        //systems.Add(new TestRunSystemC());
+        //systems.Add(new TestRunSystemD());
+        //systems.Add(new TestRunSystemE());
+        //systems.Init();
+        //for (int i = 0; i < 10; i++)
+        //{
+        //    systems.Run();
+        //}
+        //systems.Dispose();
         Console.ReadLine();
         return 0;
     }
@@ -89,13 +104,19 @@ class TestRunSystemD : IEcsRunSystem, IEcsInitSystem
     EcsPool<InitStruct> pool;
     EcsFilter filter;
 
+
     public void Init(EcsSystems systems)
     {
         pool = systems.GetWorld().GetPool<InitStruct>();
+        filter = systems.GetWorld().FilterInc<InitStruct>().End();
     }
 
     public void Run(EcsSystems systems, int id)
     {
+        foreach (var item in filter)
+        {
+
+        }
         Console.WriteLine($"Running D {id}");
     }
 }
@@ -107,4 +128,3 @@ class TestRunSystemE : IEcsRunSystem
         Console.WriteLine($"Running E {id}");
     }
 }
-
