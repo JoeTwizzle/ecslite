@@ -580,6 +580,16 @@ namespace EcsLite
             internal const int FiltersDefault = 512;
             internal const int PoolDenseSizeDefault = 512;
             internal const int PoolRecycledSizeDefault = 512;
+
+            public Config(int entities, int recycledEntities, int pools, int filters, int poolDenseSize, int poolRecycledSize)
+            {
+                Entities = entities;
+                RecycledEntities = recycledEntities;
+                Pools = pools;
+                Filters = filters;
+                PoolDenseSize = poolDenseSize;
+                PoolRecycledSize = poolRecycledSize;
+            }
         }
 
 #if ENABLE_IL2CPP
