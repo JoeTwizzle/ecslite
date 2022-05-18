@@ -6,13 +6,10 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ecslite", "ecslite\ecslite.csproj", "{40C13582-FC6B-47AF-88DA-9B702C8B87BE}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{6498DF57-B96B-40C4-8967-74B292D43084}"
-	ProjectSection(SolutionItems) = preProject
-		.editorconfig = .editorconfig
-	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EcsLiteTests", "EcsLiteTests\EcsLiteTests.csproj", "{5172D9AD-F14E-4319-80FE-08192BF7A093}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EcsLiteSystemsGenarator", "EcsLiteSystemsGenarator\EcsLiteSystemsGenarator.csproj", "{25F948E6-8832-40AE-A930-96BFE0E8F9C3}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EcsLiteSystemsGenarator", "EcsLiteSystemsGenarator\EcsLiteSystemsGenarator.csproj", "{25F948E6-8832-40AE-A930-96BFE0E8F9C3}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

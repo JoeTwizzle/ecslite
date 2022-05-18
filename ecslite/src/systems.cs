@@ -279,11 +279,11 @@ namespace EcsLite
             }
         }
 
-        void WorkerLoopThreads(object id)
+        void WorkerLoopThreads(object? id)
         {
             while (!_disposed)
             {
-                int threadId = (int)id;
+                int threadId = (int)id!;
                 //Wait for activation
                 _barrier.SignalAndWait();
                 if (_disposed)

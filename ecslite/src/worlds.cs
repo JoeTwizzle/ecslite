@@ -314,7 +314,7 @@ namespace EcsLite
             return _poolHashes.TryGetValue(type, out var pool) ? pool : null;
         }
 
-        public int GetAllEntities(ref int[] entities)
+        public int GetAllEntities(ref int[]? entities)
         {
             var count = _entitiesCount - _recycledEntitiesCount;
             if (entities == null || entities.Length < count)
@@ -384,7 +384,7 @@ namespace EcsLite
             return itemsCount;
         }
 
-        public int GetComponentTypes(int entity, [AllowNull] ref Type[] list)
+        public int GetComponentTypes(int entity, ref Type[]? list)
         {
             var itemsCount = Entities[entity].ComponentsCount;
             if (itemsCount == 0) { return 0; }
