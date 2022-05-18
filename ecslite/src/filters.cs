@@ -15,9 +15,10 @@ using Unity.IL2CPP.CompilerServices;
 namespace EcsLite
 {
 #if LEOECSLITE_FILTER_EVENTS
-    public interface IEcsFilterEventListener {
-        void OnEntityAdded (int entity);
-        void OnEntityRemoved (int entity);
+    public interface IEcsFilterEventListener
+    {
+        void OnEntityAdded(int entity);
+        void OnEntityRemoved(int entity);
     }
 #endif
 #if ENABLE_IL2CPP
@@ -35,8 +36,8 @@ namespace EcsLite
         private DelayedOp[] _delayedOps;
         private int _delayedOpsCount;
 #if LEOECSLITE_FILTER_EVENTS
-      private  IEcsFilterEventListener[] _eventListeners = new IEcsFilterEventListener[4];
-      private  int _eventListenersCount;
+        private IEcsFilterEventListener[] _eventListeners = new IEcsFilterEventListener[4];
+        private int _eventListenersCount;
 #endif
 
         internal EcsFilter(EcsWorld world, EcsWorld.Mask mask, int denseCapacity, int sparseCapacity)
@@ -61,6 +62,12 @@ namespace EcsLite
         public int GetEntitiesCount()
         {
             return _entitiesCount;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ArraySegment<int> GetEntities()
+        {
+            return new ArraySegment<int>(_denseEntities, 0, _entitiesCount);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -89,22 +96,27 @@ namespace EcsLite
         }
 
 #if LEOECSLITE_FILTER_EVENTS
-        public void AddEventListener (IEcsFilterEventListener eventListener) {
+        public void AddEventListener(IEcsFilterEventListener eventListener)
+        {
 #if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
-            if (eventListener == null) { throw new Exception ("Listener is null."); }
+            if (eventListener == null) { throw new Exception("Listener is null."); }
 #endif
-            if (_eventListeners.Length == _eventListenersCount) {
-                Array.Resize (ref _eventListeners, _eventListenersCount << 1);
+            if (_eventListeners.Length == _eventListenersCount)
+            {
+                Array.Resize(ref _eventListeners, _eventListenersCount << 1);
             }
             _eventListeners[_eventListenersCount++] = eventListener;
         }
 
-        public void RemoveEventListener (IEcsFilterEventListener eventListener) {
-            for (var i = 0; i < _eventListenersCount; i++) {
-                if (_eventListeners[i] == eventListener) {
+        public void RemoveEventListener(IEcsFilterEventListener eventListener)
+        {
+            for (var i = 0; i < _eventListenersCount; i++)
+            {
+                if (_eventListeners[i] == eventListener)
+                {
                     _eventListenersCount--;
                     // cant fill gap with last element due listeners order is important.
-                    Array.Copy (_eventListeners, i + 1, _eventListeners, i, _eventListenersCount - i);
+                    Array.Copy(_eventListeners, i + 1, _eventListeners, i, _eventListenersCount - i);
                     break;
                 }
             }
@@ -134,7 +146,7 @@ namespace EcsLite
             _denseEntities[_entitiesCount++] = entity;
             SparseEntities[entity] = _entitiesCount;
 #if LEOECSLITE_FILTER_EVENTS
-            ProcessEventListeners (true, entity);
+            ProcessEventListeners(true, entity);
 #endif
         }
 
@@ -151,7 +163,7 @@ namespace EcsLite
                 SparseEntities[_denseEntities[idx]] = idx + 1;
             }
 #if LEOECSLITE_FILTER_EVENTS
-            ProcessEventListeners (false, entity);
+            ProcessEventListeners(false, entity);
 #endif
         }
 
@@ -195,14 +207,20 @@ namespace EcsLite
         }
 
 #if LEOECSLITE_FILTER_EVENTS
-        void ProcessEventListeners (bool isAdd, int entity) {
-            if (isAdd) {
-                for (var i = 0; i < _eventListenersCount; i++) {
-                    _eventListeners[i].OnEntityAdded (entity);
+        void ProcessEventListeners(bool isAdd, int entity)
+        {
+            if (isAdd)
+            {
+                for (var i = 0; i < _eventListenersCount; i++)
+                {
+                    _eventListeners[i].OnEntityAdded(entity);
                 }
-            } else {
-                for (var i = 0; i < _eventListenersCount; i++) {
-                    _eventListeners[i].OnEntityRemoved (entity);
+            }
+            else
+            {
+                for (var i = 0; i < _eventListenersCount; i++)
+                {
+                    _eventListeners[i].OnEntityRemoved(entity);
                 }
             }
         }
