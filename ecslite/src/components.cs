@@ -23,6 +23,9 @@ namespace EcsLite
         void SetRaw(int entity, object dataRaw);
         int GetId();
         Type GetComponentType();
+        void Transfer(int oldEntity, int newEntity);
+        void Swap(int entityA, int entityB);
+        void Clone(int oldEntity, int newEntity);
     }
 
     public interface IEcsInit<T> where T : struct
@@ -118,8 +121,8 @@ namespace EcsLite
         void IEcsPool.SetRaw(int entity, object dataRaw)
         {
 #if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
-            if (dataRaw == null || dataRaw.GetType() != _type) { throw new Exception("Invalid component data, valid \"{typeof (T).Name}\" instance required."); }
-            if (_sparseItems[entity] <= 0) { throw new Exception($"Component \"{typeof(T).Name}\" not attached to entity."); }
+            if (dataRaw == null || dataRaw.GetType() != _type) { throw new ArgumentException("Invalid component data, valid \"{typeof (T).Name}\" instance required."); }
+            if (_sparseItems[entity] <= 0) { throw new InvalidOperationException($"Component \"{typeof(T).Name}\" not attached to entity."); }
 #endif
             _denseItems[_sparseItems[entity]] = (T)dataRaw;
         }
@@ -127,7 +130,7 @@ namespace EcsLite
         void IEcsPool.AddRaw(int entity, object dataRaw)
         {
 #if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
-            if (dataRaw == null || dataRaw.GetType() != _type) { throw new Exception("Invalid component data, valid \"{typeof (T).Name}\" instance required."); }
+            if (dataRaw == null || dataRaw.GetType() != _type) { throw new ArgumentException("Invalid component data, valid \"{typeof (T).Name}\" instance required."); }
 #endif
             ref var data = ref Add(entity);
             data = (T)dataRaw;
@@ -158,11 +161,20 @@ namespace EcsLite
             return ref _recycledItemsCount;
         }
 
+
+        /// <summary>
+        /// Adds component to an Entity.
+        /// Components are guaranteed to have default values. 
+        /// Runs the Initialize method on the component if present.
+        /// </summary>
+        /// <param name="entity"></param>
+        /// <returns>Returns a refrence to the added component</returns>
+        /// <exception cref="InvalidOperationException">Thrown when entity has component already or is not alive</exception>
         public ref T Add(int entity)
         {
 #if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
-            if (!_world.IsEntityAliveInternal(entity)) { throw new Exception("Cant touch destroyed entity."); }
-            if (_sparseItems[entity] > 0) { throw new Exception($"Component \"{typeof(T).Name}\" already attached to entity."); }
+            if (!_world.IsEntityAliveInternal(entity)) { throw new InvalidOperationException("Cant touch destroyed entity."); }
+            if (_sparseItems[entity] > 0) { throw new InvalidOperationException($"Component \"{typeof(T).Name}\" already attached to entity."); }
 #endif
             int idx;
             if (_recycledItemsCount > 0)
@@ -193,30 +205,142 @@ namespace EcsLite
 #endif
             return ref _denseItems[idx];
         }
+        /// <summary>
+        /// Swaps ownership of two components
+        /// </summary>
+        /// <param name="entityA">Entity A</param>
+        /// <param name="entityB">Entity B</param>
+        /// <exception cref="InvalidOperationException">Throws in Debug if entity is not alive</exception>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Swap(int entityA, int entityB)
+        {
+#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+            if (!_world.IsEntityAliveInternal(entityA)) { throw new InvalidOperationException("Cant touch destroyed entity."); }
+            if (!_world.IsEntityAliveInternal(entityB)) { throw new InvalidOperationException("Cant touch destroyed entity."); }
+            if (_sparseItems[entityA] == 0) { throw new InvalidOperationException($"Component \"{typeof(T).Name}\" not attached to entity."); }
+            if (_sparseItems[entityB] == 0) { throw new InvalidOperationException($"Component \"{typeof(T).Name}\" not attached to entity."); }
+#endif
+            int temp = _sparseItems[entityA];
+            _sparseItems[entityA] = _sparseItems[entityB];
+            _sparseItems[entityB] = temp;
 
+#if DEBUG || LEOECSLITE_WORLD_EVENTS
+            _world.RaiseEntityChangeEvent(entityA);
+            _world.RaiseEntityChangeEvent(entityB);
+#endif
+        }
+
+        /// <summary>
+        /// Changes ownership of a component from one entity to another.
+        /// Does not destroy and copy the component.
+        /// </summary>
+        /// <param name="oldEntity">The entity the component is taken from</param>
+        /// <param name="newEntity">The entity the component is given to</param>
+        /// <exception cref="InvalidOperationException">Throws in Debug if entity is not alive</exception>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Transfer(int oldEntity, int newEntity)
+        {
+#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+            if (!_world.IsEntityAliveInternal(oldEntity)) { throw new InvalidOperationException("Cant touch destroyed entity."); }
+            if (!_world.IsEntityAliveInternal(newEntity)) { throw new InvalidOperationException("Cant touch destroyed entity."); }
+            if (_sparseItems[oldEntity] == 0) { throw new InvalidOperationException($"Component \"{typeof(T).Name}\" not attached to entity."); }
+            if (_sparseItems[newEntity] > 0) { throw new InvalidOperationException($"Component \"{typeof(T).Name}\" already attached to entity."); }
+#endif
+            _sparseItems[newEntity] = _sparseItems[oldEntity];
+            _sparseItems[oldEntity] = 0;
+
+            _world.OnEntityChangeInternal(oldEntity, _id, false);
+            _world.OnEntityChangeInternal(newEntity, _id, true);
+            ref var entityDataOld = ref _world.Entities[oldEntity];
+            ref var entityDataNew = ref _world.Entities[newEntity];
+            entityDataOld.ComponentsCount--;
+            entityDataNew.ComponentsCount++;
+
+#if DEBUG || LEOECSLITE_WORLD_EVENTS
+            _world.RaiseEntityChangeEvent(oldEntity);
+            _world.RaiseEntityChangeEvent(newEntity);
+#endif
+        }
+
+        /// <summary>
+        /// Clones component data from one entity to another entity without this component.
+        /// </summary>
+        /// <param name="oldEntity">Entity to clone from</param>
+        /// <param name="newEntity">Entity to clone to</param>
+        /// <exception cref="InvalidOperationException">Throws in Debug if entity is not alive</exception>
+        public void Clone(int oldEntity, int newEntity)
+        {
+#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+            if (!_world.IsEntityAliveInternal(oldEntity)) { throw new InvalidOperationException("Cant touch destroyed entity."); }
+            if (!_world.IsEntityAliveInternal(newEntity)) { throw new InvalidOperationException("Cant touch destroyed entity."); }
+            if (_sparseItems[oldEntity] == 0) { throw new InvalidOperationException($"Component \"{typeof(T).Name}\" not attached to entity."); }
+            if (_sparseItems[newEntity] > 0) { throw new InvalidOperationException($"Component \"{typeof(T).Name}\" already attached to entity."); }
+#endif
+            int idx;
+            if (_recycledItemsCount > 0)
+            {
+                idx = _recycledItems[--_recycledItemsCount];
+            }
+            else
+            {
+                idx = _denseItemsCount;
+                if (_denseItemsCount == _denseItems.Length)
+                {
+                    Array.Resize(ref _denseItems, _denseItemsCount << 1);
+                }
+                _denseItemsCount++;
+            }
+            _sparseItems[newEntity] = idx;
+            _world.OnEntityChangeInternal(newEntity, _id, true);
+            _world.Entities[newEntity].ComponentsCount++;
+            _denseItems[idx] = _denseItems[_sparseItems[oldEntity]];
+
+#if DEBUG || LEOECSLITE_WORLD_EVENTS
+            _world.RaiseEntityChangeEvent(newEntity);
+#endif
+        }
+
+        /// <summary>
+        /// Gets a refrence to the component on this entity
+        /// </summary>
+        /// <param name="entity">The entity to get the component from</param>
+        /// <returns>Returns a refrence to the component on this entity</returns>
+        /// <exception cref="InvalidOperationException">Throws in Debug if the entity is not alive or doesn't have this component.</exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ref T Get(int entity)
         {
 #if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
-            if (!_world.IsEntityAliveInternal(entity)) { throw new Exception("Cant touch destroyed entity."); }
-            if (_sparseItems[entity] == 0) { throw new Exception($"Cant get \"{typeof(T).Name}\" component - not attached."); }
+            if (!_world.IsEntityAliveInternal(entity)) { throw new InvalidOperationException("Cant touch destroyed entity."); }
+            if (_sparseItems[entity] == 0) { throw new InvalidOperationException($"Cant get \"{typeof(T).Name}\" component - not attached."); }
 #endif
             return ref _denseItems[_sparseItems[entity]];
         }
 
+        /// <summary>
+        /// Gets whether the entity has this component or not.
+        /// </summary>
+        /// <param name="entity">The entity to check</param>
+        /// <returns>Returns whether the entity has this component or not.</returns>
+        /// <exception cref="InvalidOperationException">Throws in Debug if entity is not alive</exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Has(int entity)
         {
 #if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
-            if (!_world.IsEntityAliveInternal(entity)) { throw new Exception("Cant touch destroyed entity."); }
+            if (!_world.IsEntityAliveInternal(entity)) { throw new InvalidOperationException("Cant touch destroyed entity."); }
 #endif
             return _sparseItems[entity] > 0;
         }
 
+        /// <summary>
+        /// Removes a component from an entity.
+        /// Runs the Destroy method if present.
+        /// </summary>
+        /// <param name="entity"></param>
+        /// <exception cref="InvalidOperationException">Throws in Debug if entity is not alive</exception>
         public void Del(int entity)
         {
 #if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
-            if (!_world.IsEntityAliveInternal(entity)) { throw new Exception("Cant touch destroyed entity."); }
+            if (!_world.IsEntityAliveInternal(entity)) { throw new InvalidOperationException("Cant touch destroyed entity."); }
 #endif
             ref var sparseData = ref _sparseItems[entity];
             if (sparseData > 0)
