@@ -13,7 +13,7 @@ using System.Runtime.CompilerServices;
 using Unity.IL2CPP.CompilerServices;
 #endif
 
-namespace EcsLite
+namespace EcsLite.Systems
 {
     public interface IEcsSystem { }
 
