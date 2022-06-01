@@ -38,12 +38,12 @@ namespace EcsLite
         private int _masksCount;
         private bool _disposed;
 
-#if DEBUG || LEOECSLITE_WORLD_EVENTS
+#if DEBUG || ECSLITE_WORLD_EVENTS
         readonly List<IEcsWorldEventListener> _eventListeners;
 
         public void AddEventListener(IEcsWorldEventListener listener)
         {
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
             if (listener == null) { throw new Exception("Listener is null."); }
 #endif
             _eventListeners.Add(listener);
@@ -51,7 +51,7 @@ namespace EcsLite
 
         public void RemoveEventListener(IEcsWorldEventListener listener)
         {
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
             if (listener == null) { throw new Exception("Listener is null."); }
 #endif
             _eventListeners.Remove(listener);
@@ -65,7 +65,7 @@ namespace EcsLite
             }
         }
 #endif
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
         private readonly List<int> _leakedEntities = new List<int>(512);
 
         internal bool CheckForLeakedEntities()
@@ -111,7 +111,7 @@ namespace EcsLite
             // masks.
             _masks = new Mask[64];
             _masksCount = 0;
-#if DEBUG || LEOECSLITE_WORLD_EVENTS
+#if DEBUG || ECSLITE_WORLD_EVENTS
             _eventListeners = new List<IEcsWorldEventListener>(4);
 #endif
             _disposed = false;
@@ -119,7 +119,7 @@ namespace EcsLite
 
         public void Dispose()
         {
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
             if (CheckForLeakedEntities()) { throw new Exception($"Empty entity detected before EcsWorld.Dispose()."); }
 #endif
             _disposed = true;
@@ -137,7 +137,7 @@ namespace EcsLite
             _allFilters.Clear();
             _filtersByIncludedComponents = Array.Empty<List<EcsFilter>>();
             _filtersByExcludedComponents = Array.Empty<List<EcsFilter>>();
-#if DEBUG || LEOECSLITE_WORLD_EVENTS
+#if DEBUG || ECSLITE_WORLD_EVENTS
             for (var ii = _eventListeners.Count - 1; ii >= 0; ii--)
             {
                 _eventListeners[ii].OnWorldDisposed(this);
@@ -176,7 +176,7 @@ namespace EcsLite
                     {
                         _allFilters[i].ResizeSparseIndex(newSize);
                     }
-#if DEBUG || LEOECSLITE_WORLD_EVENTS
+#if DEBUG || ECSLITE_WORLD_EVENTS
                     for (int ii = 0, iMax = _eventListeners.Count; ii < iMax; ii++)
                     {
                         _eventListeners[ii].OnWorldResized(newSize);
@@ -186,10 +186,10 @@ namespace EcsLite
                 entity = _entitiesCount++;
                 Entities[entity].Gen = 1;
             }
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
             _leakedEntities.Add(entity);
 #endif
-#if DEBUG || LEOECSLITE_WORLD_EVENTS
+#if DEBUG || ECSLITE_WORLD_EVENTS
             for (int ii = 0, iMax = _eventListeners.Count; ii < iMax; ii++)
             {
                 _eventListeners[ii].OnEntityCreated(entity);
@@ -200,7 +200,7 @@ namespace EcsLite
 
         public void DelEntity(int entity)
         {
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
             if (entity < 0 || entity >= _entitiesCount) { throw new Exception("Cant touch destroyed entity."); }
 #endif
             ref var entityData = ref Entities[entity];
@@ -223,7 +223,7 @@ namespace EcsLite
                         }
                     }
                 }
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
                 if (entityData.ComponentsCount != 0) { throw new Exception($"Invalid components count on entity {entity} => {entityData.ComponentsCount}."); }
 #endif
                 return;
@@ -234,7 +234,7 @@ namespace EcsLite
                 Array.Resize(ref _recycledEntities, _recycledEntitiesCount << 1);
             }
             _recycledEntities[_recycledEntitiesCount++] = entity;
-#if DEBUG || LEOECSLITE_WORLD_EVENTS
+#if DEBUG || ECSLITE_WORLD_EVENTS
             for (int ii = 0, iMax = _eventListeners.Count; ii < iMax; ii++)
             {
                 _eventListeners[ii].OnEntityDestroyed(entity);
@@ -448,7 +448,7 @@ namespace EcsLite
                     filter.AddEntity(i);
                 }
             }
-#if DEBUG || LEOECSLITE_WORLD_EVENTS
+#if DEBUG || ECSLITE_WORLD_EVENTS
             for (int ii = 0, iMax = _eventListeners.Count; ii < iMax; ii++)
             {
                 _eventListeners[ii].OnFilterCreated(filter);
@@ -470,7 +470,7 @@ namespace EcsLite
                     {
                         if (IsMaskCompatible(filter.GetMask(), entity))
                         {
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
                             if (filter.SparseEntities[entity] > 0) { throw new Exception("Entity already in filter."); }
 #endif
                             filter.AddEntity(entity);
@@ -483,7 +483,7 @@ namespace EcsLite
                     {
                         if (IsMaskCompatibleWithout(filter.GetMask(), entity, componentType))
                         {
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
                             if (filter.SparseEntities[entity] == 0) { throw new Exception("Entity not in filter."); }
 #endif
                             filter.RemoveEntity(entity);
@@ -500,7 +500,7 @@ namespace EcsLite
                     {
                         if (IsMaskCompatible(filter.GetMask(), entity))
                         {
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
                             if (filter.SparseEntities[entity] == 0) { throw new Exception("Entity not in filter."); }
 #endif
                             filter.RemoveEntity(entity);
@@ -513,7 +513,7 @@ namespace EcsLite
                     {
                         if (IsMaskCompatibleWithout(filter.GetMask(), entity, componentType))
                         {
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
                             if (filter.SparseEntities[entity] > 0) { throw new Exception("Entity already in filter."); }
 #endif
                             filter.AddEntity(entity);
@@ -604,7 +604,7 @@ namespace EcsLite
             internal int IncludeCount;
             internal int ExcludeCount;
             internal int Hash;
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
             bool _built;
 #endif
 
@@ -622,7 +622,7 @@ namespace EcsLite
                 IncludeCount = 0;
                 ExcludeCount = 0;
                 Hash = 0;
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
                 _built = false;
 #endif
             }
@@ -631,7 +631,7 @@ namespace EcsLite
             public Mask Inc<T>() where T : struct
             {
                 var poolId = _world.GetPool<T>().GetId();
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
                 if (_built) { throw new Exception("Cant change built mask."); }
                 if (Array.IndexOf(Include, poolId, 0, IncludeCount) != -1) { throw new Exception($"{typeof(T).Name} already in constraints list."); }
                 if (Array.IndexOf(Exclude, poolId, 0, ExcludeCount) != -1) { throw new Exception($"{typeof(T).Name} already in constraints list."); }
@@ -648,7 +648,7 @@ namespace EcsLite
             public Mask Exc<T>() where T : struct
             {
                 var poolId = _world.GetPool<T>().GetId();
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
                 if (_built) { throw new Exception("Cant change built mask."); }
                 if (Array.IndexOf(Include, poolId, 0, IncludeCount) != -1) { throw new Exception($"{typeof(T).Name} already in constraints list."); }
                 if (Array.IndexOf(Exclude, poolId, 0, ExcludeCount) != -1) { throw new Exception($"{typeof(T).Name} already in constraints list."); }
@@ -661,7 +661,7 @@ namespace EcsLite
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public EcsFilter End(int capacity = 512)
             {
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
                 if (_built) { throw new Exception("Cant change built mask."); }
                 _built = true;
 #endif
@@ -709,7 +709,7 @@ namespace EcsLite
 
     }
 
-#if DEBUG || LEOECSLITE_WORLD_EVENTS
+#if DEBUG || ECSLITE_WORLD_EVENTS
     public interface IEcsWorldEventListener
     {
         void OnEntityCreated(int entity);

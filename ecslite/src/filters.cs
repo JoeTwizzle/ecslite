@@ -14,7 +14,7 @@ using Unity.IL2CPP.CompilerServices;
 
 namespace EcsLite
 {
-#if LEOECSLITE_FILTER_EVENTS
+#if ECSLITE_FILTER_EVENTS
     public interface IEcsFilterEventListener
     {
         void OnEntityAdded(int entity);
@@ -35,7 +35,7 @@ namespace EcsLite
         private int _lockCount;
         private DelayedOp[] _delayedOps;
         private int _delayedOpsCount;
-#if LEOECSLITE_FILTER_EVENTS
+#if ECSLITE_FILTER_EVENTS
         private IEcsFilterEventListener[] _eventListeners = new IEcsFilterEventListener[4];
         private int _eventListenersCount;
 #endif
@@ -95,10 +95,10 @@ namespace EcsLite
             _lockCount++;
         }
 
-#if LEOECSLITE_FILTER_EVENTS
+#if ECSLITE_FILTER_EVENTS
         public void AddEventListener(IEcsFilterEventListener eventListener)
         {
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
             if (eventListener == null) { throw new Exception("Listener is null."); }
 #endif
             if (_eventListeners.Length == _eventListenersCount)
@@ -145,7 +145,7 @@ namespace EcsLite
             }
             _denseEntities[_entitiesCount++] = entity;
             SparseEntities[entity] = _entitiesCount;
-#if LEOECSLITE_FILTER_EVENTS
+#if ECSLITE_FILTER_EVENTS
             ProcessEventListeners(true, entity);
 #endif
         }
@@ -162,7 +162,7 @@ namespace EcsLite
                 _denseEntities[idx] = _denseEntities[_entitiesCount];
                 SparseEntities[_denseEntities[idx]] = idx + 1;
             }
-#if LEOECSLITE_FILTER_EVENTS
+#if ECSLITE_FILTER_EVENTS
             ProcessEventListeners(false, entity);
 #endif
         }
@@ -184,7 +184,7 @@ namespace EcsLite
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void Unlock()
         {
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
             if (_lockCount <= 0) { throw new Exception($"Invalid lock-unlock balance for \"{GetType().Name}\"."); }
 #endif
             _lockCount--;
@@ -206,7 +206,7 @@ namespace EcsLite
             }
         }
 
-#if LEOECSLITE_FILTER_EVENTS
+#if ECSLITE_FILTER_EVENTS
         void ProcessEventListeners(bool isAdd, int entity)
         {
             if (isAdd)

@@ -140,7 +140,7 @@ namespace EcsLite
                 if (system is IEcsPreInitSystem initSystem)
                 {
                     initSystem.PreInit(this);
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
                     var worldName = CheckForLeakedEntities();
                     if (worldName != null) { throw new System.Exception($"Empty entity detected in world \"{worldName}\" after {initSystem.GetType().Name}.PreInit()."); }
 #endif
@@ -151,7 +151,7 @@ namespace EcsLite
                 if (system is IEcsInitSystem initSystem)
                 {
                     initSystem.Init(this);
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
                     var worldName = CheckForLeakedEntities();
                     if (worldName != null) { throw new System.Exception($"Empty entity detected in world \"{worldName}\" after {initSystem.GetType().Name}.Init()."); }
 #endif
@@ -165,7 +165,7 @@ namespace EcsLite
 
         public void AddWorld(EcsWorld world, string name)
         {
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
             if (string.IsNullOrEmpty(name)) { throw new System.Exception("World name cant be null or empty."); }
 #endif
             _worlds[name] = world;
@@ -295,7 +295,7 @@ namespace EcsLite
         }
 
 
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
         public string? CheckForLeakedEntities()
         {
             if (_defaultWorld.CheckForLeakedEntities()) { return "default"; }
@@ -317,7 +317,7 @@ namespace EcsLite
                 if (_allSystems[i] is IEcsDestroySystem destroySystem)
                 {
                     destroySystem.Destroy(this);
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
                     var worldName = CheckForLeakedEntities();
                     if (worldName != null) { throw new System.Exception($"Empty entity detected in world \"{worldName}\" after {destroySystem.GetType().Name}.Destroy()."); }
 #endif
@@ -328,7 +328,7 @@ namespace EcsLite
                 if (_allSystems[i] is IEcsPostDestroySystem postDestroySystem)
                 {
                     postDestroySystem.PostDestroy(this);
-#if DEBUG && !LEOECSLITE_NO_SANITIZE_CHECKS
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
                     var worldName = CheckForLeakedEntities();
                     if (worldName != null) { throw new System.Exception($"Empty entity detected in world \"{worldName}\" after {postDestroySystem.GetType().Name}.PostDestroy()."); }
 #endif
