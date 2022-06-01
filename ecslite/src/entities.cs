@@ -66,7 +66,7 @@ namespace EcsLite
                 for (var i = 0; i < count; i++)
                 {
                     if (sb.Length > 0) { sb.Append(','); }
-                    sb.Append(types[i].Name);
+                    sb.Append(types![i].Name);
                 }
             }
             return $"Entity-{Id}:{Gen} [{sb}]";

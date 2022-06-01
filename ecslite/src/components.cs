@@ -161,7 +161,6 @@ namespace EcsLite
             return ref _recycledItemsCount;
         }
 
-
         /// <summary>
         /// Adds component to an Entity.
         /// Components are guaranteed to have default values. 
@@ -200,11 +199,12 @@ namespace EcsLite
             _sparseItems[entity] = idx;
             _world.OnEntityChangeInternal(entity, _id, true);
             _world.Entities[entity].ComponentsCount++;
-#if DEBUG || ECSLITE_WORLD_EVENTS
+#if DEBUG || LEOECSLITE_WORLD_EVENTS
             _world.RaiseEntityChangeEvent(entity);
 #endif
             return ref _denseItems[idx];
         }
+
         /// <summary>
         /// Swaps ownership of two components
         /// </summary>
@@ -224,7 +224,7 @@ namespace EcsLite
             _sparseItems[entityA] = _sparseItems[entityB];
             _sparseItems[entityB] = temp;
 
-#if DEBUG || ECSLITE_WORLD_EVENTS
+#if DEBUG || LEOECSLITE_WORLD_EVENTS
             _world.RaiseEntityChangeEvent(entityA);
             _world.RaiseEntityChangeEvent(entityB);
 #endif
@@ -256,7 +256,7 @@ namespace EcsLite
             entityDataOld.ComponentsCount--;
             entityDataNew.ComponentsCount++;
 
-#if DEBUG || ECSLITE_WORLD_EVENTS
+#if DEBUG || LEOECSLITE_WORLD_EVENTS
             _world.RaiseEntityChangeEvent(oldEntity);
             _world.RaiseEntityChangeEvent(newEntity);
 #endif
@@ -295,7 +295,7 @@ namespace EcsLite
             _world.Entities[newEntity].ComponentsCount++;
             _denseItems[idx] = _denseItems[_sparseItems[oldEntity]];
 
-#if DEBUG || ECSLITE_WORLD_EVENTS
+#if DEBUG || LEOECSLITE_WORLD_EVENTS
             _world.RaiseEntityChangeEvent(newEntity);
 #endif
         }
@@ -363,7 +363,7 @@ namespace EcsLite
                 sparseData = 0;
                 ref var entityData = ref _world.Entities[entity];
                 entityData.ComponentsCount--;
-#if DEBUG || ECSLITE_WORLD_EVENTS
+#if DEBUG || LEOECSLITE_WORLD_EVENTS
                 _world.RaiseEntityChangeEvent(entity);
 #endif
                 if (entityData.ComponentsCount == 0)
