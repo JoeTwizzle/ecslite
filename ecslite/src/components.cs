@@ -32,6 +32,7 @@ namespace EcsLite
     {
         static abstract void OnInit(ref T c);
     }
+
     public interface IEcsDestroy<T> where T : struct
     {
         static abstract void OnDestroy(ref T c);

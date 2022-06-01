@@ -576,10 +576,10 @@ namespace EcsLite
 
             internal const int EntitiesDefault = 512;
             internal const int RecycledEntitiesDefault = 512;
-            internal const int PoolsDefault = 512;
-            internal const int FiltersDefault = 512;
-            internal const int PoolDenseSizeDefault = 512;
-            internal const int PoolRecycledSizeDefault = 512;
+            internal const int PoolsDefault = 128;
+            internal const int FiltersDefault = 128;
+            internal const int PoolDenseSizeDefault = 256;
+            internal const int PoolRecycledSizeDefault = 256;
 
             public Config(int entities, int recycledEntities, int pools, int filters, int poolDenseSize, int poolRecycledSize)
             {
