@@ -7,6 +7,7 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.Serialization;
 
 #if ENABLE_IL2CPP
 using Unity.IL2CPP.CompilerServices;
@@ -14,6 +15,45 @@ using Unity.IL2CPP.CompilerServices;
 
 namespace EcsLite.Systems
 {
+    public abstract class EcsSystem : IEcsSystem
+    {
+        protected readonly EcsSystems systems;
+        public EcsSystem(EcsSystems systems)
+        {
+            this.systems = systems;
+        }
+
+        protected EcsWorld GetWorld(string? world = null)
+        {
+            return systems.GetWorld(world);
+        }
+
+        protected EcsPool<T> GetPool<T>(string? world = null) where T : struct
+        {
+            return systems.GetWorld(world).GetPool<T>();
+        }
+
+        protected EcsWorld.Mask FilterInc<T>(string? world = null) where T : struct
+        {
+            return systems.GetWorld(world).FilterInc<T>();
+        }
+
+        protected EcsWorld.Mask FilterExc<T>(string? world = null) where T : struct
+        {
+            return systems.GetWorld(world).FilterExc<T>();
+        }
+
+        protected T GetSingleton<T>()
+        {
+            return systems.GetSingleton<T>();
+        }
+
+        protected T GetInjected<T>(string identifier)
+        {
+            return systems.GetInjected<T>(identifier);
+        }
+    }
+
     public interface IEcsSystem { }
 
     public interface IEcsPreInitSystem : IEcsSystem
@@ -53,7 +93,12 @@ namespace EcsLite.Systems
         readonly List<IEcsSystem> _allSystems;
         readonly int _numThreads;
         readonly Thread[] _threads;
-        readonly Barrier _barrier;
+        readonly Barrier _barrier1;
+        readonly Barrier _barrier2;
+        readonly object[] _constructorParams;
+        readonly Dictionary<string, object> _injected;
+        readonly Dictionary<Type, object> _injectedSingletons;
+        readonly Queue<Type> _delayedAddQueue;
         SystemsBucket[] _buckets;
         int _bucketCount;
         bool _disposed;
@@ -66,7 +111,8 @@ namespace EcsLite.Systems
             _bucketCount = 0;
             _buckets = new SystemsBucket[4];
             _threads = new Thread[_numThreads - 1];
-            _barrier = new Barrier(_numThreads);
+            _barrier1 = new Barrier(_numThreads);
+            _barrier2 = new Barrier(_numThreads);
             for (int i = 0; i < _threads.Length; i++)
             {
                 _threads[i] = new Thread(WorkerLoopThreads)
@@ -75,9 +121,13 @@ namespace EcsLite.Systems
                     IsBackground = true
                 };
             }
+            _delayedAddQueue = new Queue<Type>();
             _defaultWorld = defaultWorld;
             _worlds = new Dictionary<string, EcsWorld>(32);
             _allSystems = new List<IEcsSystem>(128);
+            _injectedSingletons = new Dictionary<Type, object>();
+            _injected = new Dictionary<string, object>();
+            _constructorParams = new object[] { this };
         }
 
         public IReadOnlyDictionary<string, EcsWorld> AllNamedWorlds => _worlds;
@@ -110,6 +160,17 @@ namespace EcsLite.Systems
 
         public void Init()
         {
+            while (_delayedAddQueue.Count > 0)
+            {
+                Type type = _delayedAddQueue.Dequeue();
+
+                IEcsSystem system = (IEcsSystem)Activator.CreateInstance(type, _constructorParams)!;
+                _allSystems.Add(system);
+                if (system is IEcsRunSystem runSystem)
+                {
+                    AddRunSystem(runSystem);
+                }
+            }
             foreach (var system in _allSystems)
             {
                 if (system is IEcsPreInitSystem initSystem)
@@ -138,6 +199,26 @@ namespace EcsLite.Systems
             }
         }
 
+        public void Inject<T>(string identifier, T data) where T : notnull
+        {
+            _injected.Add(identifier, data);
+        }
+
+        public void InjectSingleton<T>(T data) where T : notnull
+        {
+            _injectedSingletons.Add(typeof(T), data);
+        }
+
+        public T GetSingleton<T>()
+        {
+            return (T)_injectedSingletons[typeof(T)];
+        }
+
+        public T GetInjected<T>(string identifier)
+        {
+            return (T)_injected[identifier];
+        }
+
         public void AddWorld(EcsWorld world, string name)
         {
 #if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
@@ -146,16 +227,23 @@ namespace EcsLite.Systems
             _worlds[name] = world;
         }
 
-        public void Add(IEcsSystem system)
+        public void Add<T>() where T : EcsSystem
         {
-            _allSystems.Add(system);
-            if (system is IEcsRunSystem runSystem)
-            {
-                AddRunSystem(runSystem);
-            }
+            _delayedAddQueue.Enqueue(typeof(T));
         }
 
-
+        //public void Add(IEcsSystem system)
+        //{
+        //    if (system is EcsSystem)
+        //    {
+        //        throw new Exception("Call Add<T>() for types which derive from EcsSystem");
+        //    }
+        //    _allSystems.Add(system);
+        //    if (system is IEcsRunSystem runSystem)
+        //    {
+        //        AddRunSystem(runSystem);
+        //    }
+        //}
 
         public void Run()
         {
@@ -164,34 +252,35 @@ namespace EcsLite.Systems
             for (int i = 0; i < _bucketCount; i++)
             {
                 //Wait for activation
-                _barrier.SignalAndWait();
+                _barrier1.SignalAndWait();
                 DoWork(0);
+                _barrier2.SignalAndWait();
                 //Set next working bucket
                 Interlocked.Increment(ref _currentBucket);
             }
-        }    
-        
-        
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
         void WorkerLoopThreads(object? id)
         {
             while (!_disposed)
             {
                 int threadId = (int)id!;
                 //Wait for activation
-                _barrier.SignalAndWait();
+                _barrier1.SignalAndWait();
                 if (_disposed)
                 {
                     return;
                 }
                 DoWork(threadId);
+                _barrier2.SignalAndWait();
             }
         }
-
         [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         void DoWork(int threadId)
         {
-            var systems = _buckets[_currentBucket].parallelRunSystems;
-            int count = systems.Count;
+            var systems = _buckets[_currentBucket].ParallelRunSystems;
+            int count = systems?.Count ?? 0;
             int systemsPerThread = Math.DivRem(count, _threads.Length + 1, out var remainder);
             if (remainder != 0)
             {
@@ -205,12 +294,9 @@ namespace EcsLite.Systems
                 {
                     break;
                 }
-                systems[index].Run(this, threadId);
+                systems![index].Run(this, threadId);
             }
         }
-
-
-
 
 #if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
         public string? CheckForLeakedEntities()
@@ -253,12 +339,13 @@ namespace EcsLite.Systems
             }
             _allSystems.Clear();
             _disposed = true;
-            _barrier.SignalAndWait();
+            _barrier1.SignalAndWait();
             for (int i = 0; i < _threads.Length; i++)
             {
                 _threads[i].Join();
             }
-            _barrier.Dispose();
+            _barrier1.Dispose();
+            _barrier2.Dispose();
         }
     }
 }

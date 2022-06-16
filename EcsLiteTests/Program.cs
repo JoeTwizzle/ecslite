@@ -1,4 +1,5 @@
 ﻿using EcsLite;
+using EcsLite.Systems;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -56,75 +57,112 @@ class Program
         normPool.Swap(ent2, ent);
         Console.WriteLine(normPool.Get(ent).a);
         Console.WriteLine(normPool.Get(ent2).a);
-        //EcsSystems systems = new EcsSystems(6, world);
-        //systems.Add(new TestRunSystemA());
-        //systems.Add(new TestRunSystemB());
-        //systems.Add(new TestRunSystemC());
-        //systems.Add(new TestRunSystemD());
-        //systems.Add(new TestRunSystemE());
-        //systems.Init();
-        //for (int i = 0; i < 10; i++)
-        //{
-        //    systems.Run();
-        //}
-        //systems.Dispose();
+        EcsSystems systems = new EcsSystems(6, world);
+        systems.Add<TestRunSystemA>();
+        systems.Add<TestRunSystemB>();
+        systems.Add<TestRunSystemC>();
+        systems.Add<TestRunSystemD>();
+        systems.Add<TestRunSystemE>();
+        systems.Inject("Test", "I like trains.");
+        systems.InjectSingleton(new TestSingleton());
+        systems.Init();
+        for (int i = 0; i < 10000; i++)
+        {
+            systems.Run();
+        }
+        Console.WriteLine("Disposing!");
+        systems.Dispose();
         Console.ReadLine();
         return 0;
     }
 }
 
-[EcsWrite("Console")]
-class TestRunSystemA : IEcsRunSystem
+class TestSingleton
 {
+    public int Coolness = 10000;
+}
+
+[EcsWrite("Console")]
+class TestRunSystemA : EcsSystem, IEcsRunSystem
+{
+    int runs = 0;
+    public TestRunSystemA(EcsSystems systems) : base(systems)
+    {
+    }
+
     public void Run(EcsSystems systems, int id)
     {
-        Console.WriteLine($"Running A {id}");
+        runs++;
+        //Console.WriteLine($"Running A {id}");
     }
 }
 [EcsWrite("Console", typeof(int))]
-class TestRunSystemB : IEcsRunSystem
+class TestRunSystemB : EcsSystem, IEcsRunSystem
 {
+    int runs = 0;
+    public TestRunSystemB(EcsSystems systems) : base(systems)
+    {
+        
+    }
     public void Run(EcsSystems systems, int id)
     {
-        Console.WriteLine($"Running B {id}");
+        runs++;
+        //Console.WriteLine($"TestString: \"{GetInjected<string>("Test")}\"");
+        //Console.WriteLine($"Running B {id}");
     }
 }
-[EcsWrite("Test", typeof(int))]
-class TestRunSystemC : IEcsRunSystem
+[EcsRead("Test", typeof(int))]
+class TestRunSystemC : EcsSystem, IEcsRunSystem
 {
+    int runs = 0;
+    TestSingleton singleton;
+    public TestRunSystemC(EcsSystems systems) : base(systems)
+    {
+        singleton = GetSingleton<TestSingleton>();
+    }
     public void Run(EcsSystems systems, int id)
     {
-        Console.WriteLine($"Running C {id}");
+        runs++;
+        Console.WriteLine($"Coolness: {singleton.Coolness}");
+        //Console.WriteLine($"Running C {id}");
     }
 }
 
-[EcsRead("Test", typeof(int))]
-class TestRunSystemD : IEcsRunSystem, IEcsInitSystem
+[EcsWrite("Test", typeof(int))]
+class TestRunSystemD : EcsSystem, IEcsRunSystem
 {
+    int runs = 0;
     EcsPool<InitStruct> pool;
     EcsFilter filter;
-
-
-    public void Init(EcsSystems systems)
+    TestSingleton singleton;
+    public TestRunSystemD(EcsSystems systems) : base(systems)
     {
-        pool = systems.GetWorld().GetPool<InitStruct>();
-        filter = systems.GetWorld().FilterInc<InitStruct>().End();
+        pool = GetPool<InitStruct>();
+        filter = FilterInc<InitStruct>().End();
+        singleton = GetSingleton<TestSingleton>();
     }
 
     public void Run(EcsSystems systems, int id)
     {
         foreach (var item in filter)
         {
-
+            
         }
-        Console.WriteLine($"Running D {id}");
+        runs++;
+        singleton.Coolness--;
+        //Console.WriteLine($"Running D {id}");
     }
 }
 [EcsWrite("Test", typeof(float))]
-class TestRunSystemE : IEcsRunSystem
+class TestRunSystemE : EcsSystem, IEcsRunSystem
 {
+    int runs = 0;
+    public TestRunSystemE(EcsSystems systems) : base(systems)
+    {
+    }
     public void Run(EcsSystems systems, int id)
     {
-        Console.WriteLine($"Running E {id}");
+        runs++;
+        //Console.WriteLine($"Running E {id}");
     }
 }

@@ -90,7 +90,8 @@ namespace EcsLite.Systems
         }
         private struct SystemsBucket
         {
-            public List<IEcsRunSystem> parallelRunSystems;
+            public IReadOnlyList<IEcsRunSystem>? ParallelRunSystems => parallelRunSystems;
+            List<IEcsRunSystem>? parallelRunSystems;
             Dictionary<string, HashSet<Type>?> writeTypes;
             Dictionary<string, HashSet<Type>?> readTypes;
             public Metric GetFitMetric(IEcsRunSystem system)
@@ -183,10 +184,10 @@ namespace EcsLite.Systems
             bool CheckWriteAttribute(EcsWriteAttribute[] attributes)
             {
                 //for all (world, type[]) pairs
-                foreach (var item in attributes)
+                foreach (var writeAttribute in attributes)
                 {
                     //check if world exists and contains types being read from
-                    if (readTypes.TryGetValue(item.World, out var worldTypes))
+                    if (readTypes.TryGetValue(writeAttribute.World, out var worldTypes))
                     {
                         //This world exists but the hashset is null
                         //This implies that the entire world is being used
@@ -195,12 +196,12 @@ namespace EcsLite.Systems
                             return false;
                         }
                         //The hashset contains some amount of types, but we want to use all of the types
-                        if (item.Pools.Length == 0)
+                        if (writeAttribute.Pools.Length == 0)
                         {
                             return false;
                         }
                         //for all types check if we are already reading from it
-                        foreach (var type in item.Pools)
+                        foreach (var type in writeAttribute.Pools)
                         {
                             //if we are, we can't fit in this bucket
                             if (worldTypes.Contains(type))
@@ -211,7 +212,7 @@ namespace EcsLite.Systems
                     }
 
                     //check if world exists and contains types being written to
-                    if (writeTypes.TryGetValue(item.World, out worldTypes))
+                    if (writeTypes.TryGetValue(writeAttribute.World, out worldTypes))
                     {
                         //This world exists but the hashset is null
                         //This implies that the entire world is being used
@@ -220,12 +221,12 @@ namespace EcsLite.Systems
                             return false;
                         }
                         //The hashset contains some amount of types, but we want to use all of the types
-                        if (item.Pools.Length == 0)
+                        if (writeAttribute.Pools.Length == 0)
                         {
                             return false;
                         }
                         //for all types check if we are already writing to it
-                        foreach (var type in item.Pools)
+                        foreach (var type in writeAttribute.Pools)
                         {
                             //if we are, we can't fit in this bucket
                             if (worldTypes.Contains(type))
@@ -255,13 +256,14 @@ namespace EcsLite.Systems
                     {
                         if (item.Pools.Length == 0)
                         {
-                            writeTypes.Add(item.World, null);
+                            readTypes.Add(item.World, null);
                             continue;
                         }
                         //check if world exists and contains types being written to
                         if (!readTypes.TryGetValue(item.World, out var worldTypes))
                         {
                             worldTypes = new HashSet<Type>();
+                            readTypes.Add(item.World, worldTypes);
                         }
                         foreach (var type in item.Pools)
                         {
@@ -282,6 +284,7 @@ namespace EcsLite.Systems
                         if (!writeTypes.TryGetValue(item.World, out var worldTypes))
                         {
                             worldTypes = new HashSet<Type>();
+                            writeTypes.Add(item.World, worldTypes);
                         }
                         foreach (var type in item.Pools)
                         {
