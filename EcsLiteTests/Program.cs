@@ -57,25 +57,28 @@ class Program
         normPool.Swap(ent2, ent);
         Console.WriteLine(normPool.Get(ent).a);
         Console.WriteLine(normPool.Get(ent2).a);
-        EcsSystems systems = new EcsSystems(6, world);
-        systems.SetTickDelay(0); //Run as fast as possible
-        systems.Add<TestRunSystemA>();
-        systems.Add<TestRunSystemB>();
-        systems.SetTickDelay(1f / 60f); //Run 60 times a second
-        systems.Add<TestRunSystemC>();
-        systems.Add<TestRunSystemD>();
-        systems.SetTickDelay(1f / 20f);//Run 20 times a second
-        systems.Add<TestRunSystemE>();
-        systems.Inject("Test", "I like trains.");
-        systems.InjectSingleton(new TestSingleton());
+        EcsSystemsBuilder builder = new EcsSystemsBuilder(world);
+        builder.SetTickDelay(0); //Run as fast as possible
+        builder.SetGroup("Test");
+        builder.Add<TestRunSystemA>();
+        builder.Add<TestRunSystemB>();
+        builder.SetTickDelay(1f / 60f); //Run 60 times a second
+        builder.ClearGroup();
+        builder.Add<TestRunSystemC>();
+        builder.Add<TestRunSystemD>();
+        builder.SetTickDelay(1f / 20f);//Run 20 times a second
+        builder.Add<TestRunSystemE>();
+        builder.Inject("Test", "I like trains.");
+        builder.InjectSingleton(new TestSingleton());
+        var systems = builder.Finish(6);
         systems.Init();
         var watch = Stopwatch.StartNew();
         double delta = double.Epsilon;
         while (true)
         {
-            double prev = watch.Elapsed.TotalMilliseconds;
+            double prev = watch.Elapsed.TotalSeconds;
             systems.Run(delta);
-            double current = watch.Elapsed.TotalMilliseconds;
+            double current = watch.Elapsed.TotalSeconds;
             delta = current - prev;
         }
         Console.WriteLine("Disposing!");
@@ -98,10 +101,10 @@ class TestRunSystemA : EcsSystem, IEcsRunSystem
     {
     }
 
-    public void Run(EcsSystems systems, int id)
+    public void Run(EcsSystems systems, float dt, int id)
     {
         runs++;
-        //Console.WriteLine($"Running A {id}");
+        Console.WriteLine($"Running A {dt}");
     }
 }
 [EcsWrite("Console", typeof(int))]
@@ -112,7 +115,7 @@ class TestRunSystemB : EcsSystem, IEcsRunSystem
     {
 
     }
-    public void Run(EcsSystems systems, int id)
+    public void Run(EcsSystems systems, float dt, int id)
     {
         runs++;
         //Console.WriteLine($"TestString: \"{GetInjected<string>("Test")}\"");
@@ -128,7 +131,7 @@ class TestRunSystemC : EcsSystem, IEcsRunSystem
     {
         singleton = GetSingleton<TestSingleton>();
     }
-    public void Run(EcsSystems systems, int id)
+    public void Run(EcsSystems systems, float dt, int id)
     {
         runs++;
         //Console.WriteLine($"Coolness: {singleton.Coolness}");
@@ -150,7 +153,7 @@ class TestRunSystemD : EcsSystem, IEcsRunSystem
         singleton = GetSingleton<TestSingleton>();
     }
 
-    public void Run(EcsSystems systems, int id)
+    public void Run(EcsSystems systems, float dt, int id)
     {
         foreach (var item in filter)
         {
@@ -164,13 +167,18 @@ class TestRunSystemD : EcsSystem, IEcsRunSystem
 [EcsWrite("Test", typeof(float))]
 class TestRunSystemE : EcsSystem, IEcsRunSystem
 {
+    float elapsed;
     int runs = 0;
     public TestRunSystemE(EcsSystems systems) : base(systems)
     {
     }
-    public void Run(EcsSystems systems, int id)
+    public void Run(EcsSystems systems, float dt, int id)
     {
         runs++;
-        //Console.WriteLine($"Running E {id}");
+        if (elapsed < 10 && elapsed + dt > 10)
+            systems.DisableGroupNextFrame("Test");
+        if (elapsed < 20 && elapsed + dt > 20)
+            systems.EnableGroupNextFrame("Test");
+        elapsed += dt;
     }
 }

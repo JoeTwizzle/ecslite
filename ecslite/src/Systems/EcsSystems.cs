@@ -6,6 +6,7 @@
 
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 
@@ -61,9 +62,9 @@ namespace EcsLite.Systems
         public float Accumulator;
         public bool Enabled;
 
-        public EcsTickedSystem(bool defaultState, IEcsRunSystem ecsSystem, float tickDelay)
+        public EcsTickedSystem(IEcsRunSystem ecsSystem, float tickDelay)
         {
-            Enabled = defaultState;
+            Enabled = true;
             EcsSystem = ecsSystem;
             if (tickDelay <= 0)
             {
@@ -79,7 +80,17 @@ namespace EcsLite.Systems
             if (Accumulator >= TickDelay)
             {
                 Accumulator %= TickDelay;
-                EcsSystem.Run(systems, threadId);
+                if (Enabled)
+                {
+                    if (dt <= TickDelay)
+                    {
+                        EcsSystem.Run(systems, TickDelay, threadId);
+                    }
+                    else
+                    {
+                        EcsSystem.Run(systems, dt, threadId);
+                    }
+                }
             }
         }
     }
@@ -98,7 +109,7 @@ namespace EcsLite.Systems
 
     public interface IEcsRunSystem : IEcsSystem
     {
-        void Run(EcsSystems systems, int threadId);
+        void Run(EcsSystems systems, float elapsed, int threadId);
     }
 
     public interface IEcsDestroySystem : IEcsSystem
@@ -115,8 +126,22 @@ namespace EcsLite.Systems
     [Il2CppSetOption (Option.NullChecks, false)]
     [Il2CppSetOption (Option.ArrayBoundsChecks, false)]
 #endif
+    public struct SystemCreateInfo
+    {
+        public Type Type;
+        public float DelayTime;
+        public string? GroupName;
+        public bool GroupState;
 
-    public sealed partial class EcsSystems : IDisposable
+        public SystemCreateInfo(Type type, float delayTime, string? groupName, bool groupState)
+        {
+            Type = type;
+            DelayTime = delayTime;
+            GroupName = groupName;
+            GroupState = groupState;
+        }
+    }
+    public sealed class EcsSystems : IDisposable
     {
         private readonly EcsWorld _defaultWorld;
         private readonly Dictionary<string, EcsWorld> _worlds;
@@ -125,29 +150,27 @@ namespace EcsLite.Systems
         private readonly Thread[] _threads;
         private readonly Barrier _barrier1;
         private readonly Barrier _barrier2;
-        private readonly object[] _constructorParams;
         private readonly Dictionary<string, object> _injected;
         private readonly Dictionary<Type, object> _injectedSingletons;
-        private readonly Queue<(Type, float)> _delayedAddQueue;
-        private SystemsBucket[] _buckets;
+        private readonly Dictionary<string, List<EcsTickedSystem>> _groups;
+        private ConcurrentQueue<(string name, bool state)> _groupStateChanges;
+        private EcsSystemsBucket[] _buckets;
         private double _totalTime;
         private double _deltaTime;
         private float _deltaTimeFloat;
-        private int _bucketCount;
         private bool _disposed;
         private int _currentBucket;
         public int ThreadCount => _numThreads;
         public EcsWorld DefaultWorld => _defaultWorld;
         public IReadOnlyDictionary<string, EcsWorld> AllNamedWorlds => _worlds;
 
-        public EcsSystems(int numThreads, EcsWorld defaultWorld)
+        internal EcsSystems(int numThreads, EcsWorld defaultWorld, Dictionary<string, EcsWorld> worlds, List<IEcsSystem> allSystems, Dictionary<string, object> injected, Dictionary<Type, object> injectedSingletons, EcsSystemsBucket[] buckets, Dictionary<string, List<EcsTickedSystem>> groups)
         {
-            _disposed = false;
+            _defaultWorld = defaultWorld;
+            _worlds = worlds;
+            _allSystems = allSystems;
             _numThreads = numThreads;
-            _bucketCount = 0;
-            _totalTime = 0;
-            _deltaTime = 0;
-            _buckets = new SystemsBucket[4];
+            _groupStateChanges = new ConcurrentQueue<(string name, bool state)>();
             _threads = new Thread[_numThreads - 1];
             _barrier1 = new Barrier(_numThreads);
             _barrier2 = new Barrier(_numThreads);
@@ -159,17 +182,12 @@ namespace EcsLite.Systems
                     IsBackground = true
                 };
             }
-            _delayedAddQueue = new Queue<(Type, float)>();
-            _defaultWorld = defaultWorld;
-            _worlds = new Dictionary<string, EcsWorld>(32);
-            _allSystems = new List<IEcsSystem>(128);
-            _injectedSingletons = new Dictionary<Type, object>();
-            _injected = new Dictionary<string, object>();
-            _constructorParams = new object[] { this };
-            _root = new StringTreeRoot();
-            _tickedSystems = new Dictionary<string, List<EcsTickedSystem>>();
+            _injected = injected;
+            _injectedSingletons = injectedSingletons;
+            _buckets = buckets;
+            _disposed = false;
+            _groups = groups;
         }
-
 
         public int GetAllSystems(ref IEcsSystem[]? list)
         {
@@ -199,17 +217,6 @@ namespace EcsLite.Systems
 
         public void Init()
         {
-            while (_delayedAddQueue.Count > 0)
-            {
-                (Type, float) type = _delayedAddQueue.Dequeue();
-
-                IEcsSystem system = (IEcsSystem)Activator.CreateInstance(type.Item1, _constructorParams)!;
-                _allSystems.Add(system);
-                if (system is IEcsRunSystem runSystem)
-                {
-                    AddRunSystem(runSystem);
-                }
-            }
             foreach (var system in _allSystems)
             {
                 if (system is IEcsPreInitSystem initSystem)
@@ -238,16 +245,6 @@ namespace EcsLite.Systems
             }
         }
 
-        public void Inject<T>(string identifier, T data) where T : notnull
-        {
-            _injected.Add(identifier, data);
-        }
-
-        public void InjectSingleton<T>(T data) where T : notnull
-        {
-            _injectedSingletons.Add(typeof(T), data);
-        }
-
         public T GetSingleton<T>()
         {
             return (T)_injectedSingletons[typeof(T)];
@@ -255,43 +252,48 @@ namespace EcsLite.Systems
 
         public T GetInjected<T>(string identifier)
         {
+#if DEBUG
+            if (string.IsNullOrWhiteSpace(identifier))
+            {
+                throw new ArgumentException($"Tried to GetInjected with invalid identifier: {identifier}");
+            }
+#endif
             return (T)_injected[identifier];
         }
 
-        public void AddWorld(EcsWorld world, string name)
+        public void EnableGroupNextFrame(string groupName)
+        {
+            SetGroupNextFrame(groupName, true);
+        }
+
+        public void SetGroupNextFrame(string groupName, bool state)
         {
 #if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
-            if (string.IsNullOrEmpty(name)) { throw new Exception("World name can't be null or empty."); }
+            if (string.IsNullOrWhiteSpace(groupName))
+            {
+                throw new ArgumentException($"Tried to SetGroupNextFrame with invalid name: {groupName}");
+            }
+            if (!_groups.ContainsKey(groupName))
+            {
+                throw new ArgumentException($"Tried to SetGroupNextFrame with invalid name: {groupName}");
+            }
 #endif
-            _worlds[name] = world;
+            _groupStateChanges.Enqueue((groupName, state));
         }
 
-        public void Add<T>() where T : EcsSystem
+        public void DisableGroupNextFrame(string groupName)
         {
-            _delayedAddQueue.Enqueue((typeof(T), _currentDelayTime));
+            SetGroupNextFrame(groupName, false);
         }
-
-        //public void Add(IEcsSystem system)
-        //{
-        //    if (system is EcsSystem)
-        //    {
-        //        throw new Exception("Call Add<T>() for types which derive from EcsSystem");
-        //    }
-        //    _allSystems.Add(system);
-        //    if (system is IEcsRunSystem runSystem)
-        //    {
-        //        AddRunSystem(runSystem);
-        //    }
-        //}
-
 
         public void Run(double elapsed)
         {
+            ProcessGroupStates();
             _currentBucket = 0;
             _totalTime += elapsed;
             _deltaTime = elapsed;
             _deltaTimeFloat = (float)elapsed;
-            for (int i = 0; i < _bucketCount; i++)
+            for (int i = 0; i < _buckets.Length; i++)
             {
                 //Signal activation
                 _barrier1.SignalAndWait();
@@ -301,6 +303,28 @@ namespace EcsLite.Systems
                 //Set next working bucket
                 _currentBucket++;
             }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+        void ProcessGroupStates()
+        {
+            foreach (var state in _groupStateChanges)
+            {
+                if (_groups.TryGetValue(state.name, out var systems))
+                {
+                    foreach (var system in systems)
+                    {
+                        system.Enabled = state.state;
+                    }
+                }
+#if DEBUG
+                else
+                {
+                    throw new Exception($"Tried to change state on non existant group with name: {state.name} and state: {state.state}");
+                }
+#endif
+            }
+            _groupStateChanges.Clear();
         }
 
         [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
