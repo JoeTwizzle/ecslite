@@ -24,6 +24,7 @@ namespace EcsLite
         internal int Id;
         internal int Gen;
         internal EcsWorld World;
+
 #if DEBUG
         // For using in IDE debugger.
         internal object[]? DebugComponentsView
@@ -65,7 +66,7 @@ namespace EcsLite
                 for (var i = 0; i < count; i++)
                 {
                     if (sb.Length > 0) { sb.Append(','); }
-                    sb.Append(types[i].Name);
+                    sb.Append(types![i].Name);
                 }
             }
             return $"Entity-{Id}:{Gen} [{sb}]";

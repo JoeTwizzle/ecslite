@@ -9,6 +9,15 @@
     <TrimMode>Link</TrimMode>
     <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <PublishTrimmed>true</PublishTrimmed>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DefineConstants>$(DefineConstants)TRACE;ECSLITE_FILTER_EVENTS</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <DefineConstants>$(DefineConstants)TRACE;ECSLITE_FILTER_EVENTS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
