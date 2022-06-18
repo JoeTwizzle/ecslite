@@ -95,6 +95,7 @@ namespace EcsLite.Systems
         public EcsSystems Finish(int numThreads)
         {
             CreateSystems();
+            Array.Resize(ref _buckets, _bucketCount);
             var ecsSystems = new EcsSystems(numThreads, _defaultWorld, _worlds, _allSystems, _injected, _injectedSingletons, _buckets, _groups);
             var paramters = new object[] { ecsSystems };
             foreach (var ctor in _constructors)

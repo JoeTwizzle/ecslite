@@ -176,9 +176,9 @@ class TestRunSystemE : EcsSystem, IEcsRunSystem
     {
         runs++;
         if (elapsed < 10 && elapsed + dt > 10)
-            systems.DisableGroupNextFrame("Test");
+            DisableGroupNextFrame("Test");
         if (elapsed < 20 && elapsed + dt > 20)
-            systems.EnableGroupNextFrame("Test");
+            EnableGroupNextFrame("Test");
         elapsed += dt;
     }
 }

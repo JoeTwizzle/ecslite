@@ -53,6 +53,21 @@ namespace EcsLite.Systems
         {
             return systems.GetInjected<T>(identifier);
         }
+
+        protected void EnableGroupNextFrame(string groupName)
+        {
+            systems.EnableGroupNextFrame(groupName);
+        }
+
+        protected void SetGroupNextFrame(string groupName, bool state)
+        {
+            systems.SetGroupNextFrame(groupName, state);
+        }
+
+        protected void DisableGroupNextFrame(string groupName)
+        {
+            systems.DisableGroupNextFrame(groupName);
+        }
     }
 
     internal class EcsTickedSystem
@@ -153,8 +168,8 @@ namespace EcsLite.Systems
         private readonly Dictionary<string, object> _injected;
         private readonly Dictionary<Type, object> _injectedSingletons;
         private readonly Dictionary<string, List<EcsTickedSystem>> _groups;
-        private ConcurrentQueue<(string name, bool state)> _groupStateChanges;
-        private EcsSystemsBucket[] _buckets;
+        private readonly ConcurrentQueue<(string name, bool state)> _groupStateChanges;
+        private readonly EcsSystemsBucket[] _buckets;
         private double _totalTime;
         private double _deltaTime;
         private float _deltaTimeFloat;
