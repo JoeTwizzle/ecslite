@@ -56,14 +56,14 @@ namespace EcsLite.Systems
             {
                 ref var bucket = ref _buckets[bestFitIndex];
                 bucket.GetFitMetric(system);
-                bucket.AddUnchecked(system);
+                bucket.AddUnchecked(_currentGroupState, system, _currentDelayTime);
             }
             else
             {
                 _bucketCount++;
                 EnsureBucketsSize();
                 _buckets[_bucketCount - 1].GetFitMetric(system);
-                _buckets[_bucketCount - 1].AddUnchecked(system);
+                _buckets[_bucketCount - 1].AddUnchecked(_currentGroupState, system, _currentDelayTime);
             }
         }
 
@@ -76,6 +76,7 @@ namespace EcsLite.Systems
                 _buckets = buckets;
             }
         }
+
         private readonly struct Metric
         {
             public static readonly Metric Invalid = new Metric(0, false);
@@ -88,17 +89,18 @@ namespace EcsLite.Systems
                 Allowed = allowed;
             }
         }
+
         private struct SystemsBucket
         {
-            public IReadOnlyList<IEcsRunSystem>? ParallelRunSystems => parallelRunSystems;
-            List<IEcsRunSystem>? parallelRunSystems;
+            public IReadOnlyList<EcsTickedSystem>? ParallelRunSystems => parallelRunSystems;
+            List<EcsTickedSystem>? parallelRunSystems;
             Dictionary<string, HashSet<Type>?> writeTypes;
             Dictionary<string, HashSet<Type>?> readTypes;
             public Metric GetFitMetric(IEcsRunSystem system)
             {
                 if (parallelRunSystems == null)
                 {
-                    parallelRunSystems = new List<IEcsRunSystem>();
+                    parallelRunSystems = new List<EcsTickedSystem>();
                 }
                 if (writeTypes == null)
                 {
@@ -240,11 +242,11 @@ namespace EcsLite.Systems
             }
 
 
-            public void AddUnchecked(IEcsRunSystem system)
+            public void AddUnchecked(bool state, IEcsRunSystem system, float tickDelay)
             {
                 if (parallelRunSystems == null)
                 {
-                    parallelRunSystems = new List<IEcsRunSystem>();
+                    parallelRunSystems = new List<EcsTickedSystem>();
                 }
 
                 EcsReadAttribute[]? readAttributes = Attribute.GetCustomAttributes(system.GetType(), typeof(EcsReadAttribute)) as EcsReadAttribute[];
@@ -292,7 +294,7 @@ namespace EcsLite.Systems
                         }
                     }
                 }
-                parallelRunSystems.Add(system);
+                parallelRunSystems.Add(new EcsTickedSystem(state, system, tickDelay));
             }
         }
     }

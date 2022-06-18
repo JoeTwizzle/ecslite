@@ -318,6 +318,22 @@ namespace EcsLite
         }
 
         /// <summary>
+        /// Gets a readonly refrence to the component on this entity
+        /// </summary>
+        /// <param name="entity">The entity to get the component from</param>
+        /// <returns>Returns a readonly refrence to the component on this entity</returns>
+        /// <exception cref="InvalidOperationException">Throws in Debug if the entity is not alive or doesn't have this component.</exception>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ref readonly T GetReadonly(int entity)
+        {
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
+            if (!_world.IsEntityAliveInternal(entity)) { throw new InvalidOperationException("Cant touch destroyed entity."); }
+            if (_sparseItems[entity] == 0) { throw new InvalidOperationException($"Cant get \"{typeof(T).Name}\" component - not attached."); }
+#endif
+            return ref _denseItems[_sparseItems[entity]];
+        }
+
+        /// <summary>
         /// Gets whether the entity has this component or not.
         /// </summary>
         /// <param name="entity">The entity to check</param>

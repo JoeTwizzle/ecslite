@@ -58,17 +58,25 @@ class Program
         Console.WriteLine(normPool.Get(ent).a);
         Console.WriteLine(normPool.Get(ent2).a);
         EcsSystems systems = new EcsSystems(6, world);
+        systems.SetTickDelay(0); //Run as fast as possible
         systems.Add<TestRunSystemA>();
         systems.Add<TestRunSystemB>();
+        systems.SetTickDelay(1f / 60f); //Run 60 times a second
         systems.Add<TestRunSystemC>();
         systems.Add<TestRunSystemD>();
+        systems.SetTickDelay(1f / 20f);//Run 20 times a second
         systems.Add<TestRunSystemE>();
         systems.Inject("Test", "I like trains.");
         systems.InjectSingleton(new TestSingleton());
         systems.Init();
-        for (int i = 0; i < 10000; i++)
+        var watch = Stopwatch.StartNew();
+        double delta = double.Epsilon;
+        while (true)
         {
-            systems.Run();
+            double prev = watch.Elapsed.TotalMilliseconds;
+            systems.Run(delta);
+            double current = watch.Elapsed.TotalMilliseconds;
+            delta = current - prev;
         }
         Console.WriteLine("Disposing!");
         systems.Dispose();
@@ -102,7 +110,7 @@ class TestRunSystemB : EcsSystem, IEcsRunSystem
     int runs = 0;
     public TestRunSystemB(EcsSystems systems) : base(systems)
     {
-        
+
     }
     public void Run(EcsSystems systems, int id)
     {
@@ -123,7 +131,7 @@ class TestRunSystemC : EcsSystem, IEcsRunSystem
     public void Run(EcsSystems systems, int id)
     {
         runs++;
-        Console.WriteLine($"Coolness: {singleton.Coolness}");
+        //Console.WriteLine($"Coolness: {singleton.Coolness}");
         //Console.WriteLine($"Running C {id}");
     }
 }
@@ -146,7 +154,7 @@ class TestRunSystemD : EcsSystem, IEcsRunSystem
     {
         foreach (var item in filter)
         {
-            
+
         }
         runs++;
         singleton.Coolness--;

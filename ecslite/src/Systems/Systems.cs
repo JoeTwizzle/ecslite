@@ -54,6 +54,36 @@ namespace EcsLite.Systems
         }
     }
 
+    internal class EcsTickedSystem
+    {
+        public readonly IEcsRunSystem EcsSystem;
+        public readonly float TickDelay;
+        public float Accumulator;
+        public bool Enabled;
+
+        public EcsTickedSystem(bool defaultState, IEcsRunSystem ecsSystem, float tickDelay)
+        {
+            Enabled = defaultState;
+            EcsSystem = ecsSystem;
+            if (tickDelay <= 0)
+            {
+                tickDelay = float.Epsilon;
+            }
+            TickDelay = tickDelay;
+            Accumulator = 0;
+        }
+
+        public void Run(EcsSystems systems, int threadId, float dt)
+        {
+            Accumulator += dt;
+            if (Accumulator >= TickDelay)
+            {
+                Accumulator %= TickDelay;
+                EcsSystem.Run(systems, threadId);
+            }
+        }
+    }
+
     public interface IEcsSystem { }
 
     public interface IEcsPreInitSystem : IEcsSystem
@@ -88,27 +118,35 @@ namespace EcsLite.Systems
 
     public sealed partial class EcsSystems : IDisposable
     {
-        readonly EcsWorld _defaultWorld;
-        readonly Dictionary<string, EcsWorld> _worlds;
-        readonly List<IEcsSystem> _allSystems;
-        readonly int _numThreads;
-        readonly Thread[] _threads;
-        readonly Barrier _barrier1;
-        readonly Barrier _barrier2;
-        readonly object[] _constructorParams;
-        readonly Dictionary<string, object> _injected;
-        readonly Dictionary<Type, object> _injectedSingletons;
-        readonly Queue<Type> _delayedAddQueue;
-        SystemsBucket[] _buckets;
-        int _bucketCount;
-        bool _disposed;
-        int _currentBucket;
+        private readonly EcsWorld _defaultWorld;
+        private readonly Dictionary<string, EcsWorld> _worlds;
+        private readonly List<IEcsSystem> _allSystems;
+        private readonly int _numThreads;
+        private readonly Thread[] _threads;
+        private readonly Barrier _barrier1;
+        private readonly Barrier _barrier2;
+        private readonly object[] _constructorParams;
+        private readonly Dictionary<string, object> _injected;
+        private readonly Dictionary<Type, object> _injectedSingletons;
+        private readonly Queue<(Type, float)> _delayedAddQueue;
+        private SystemsBucket[] _buckets;
+        private double _totalTime;
+        private double _deltaTime;
+        private float _deltaTimeFloat;
+        private int _bucketCount;
+        private bool _disposed;
+        private int _currentBucket;
+        public int ThreadCount => _numThreads;
+        public EcsWorld DefaultWorld => _defaultWorld;
+        public IReadOnlyDictionary<string, EcsWorld> AllNamedWorlds => _worlds;
 
         public EcsSystems(int numThreads, EcsWorld defaultWorld)
         {
             _disposed = false;
             _numThreads = numThreads;
             _bucketCount = 0;
+            _totalTime = 0;
+            _deltaTime = 0;
             _buckets = new SystemsBucket[4];
             _threads = new Thread[_numThreads - 1];
             _barrier1 = new Barrier(_numThreads);
@@ -121,16 +159,17 @@ namespace EcsLite.Systems
                     IsBackground = true
                 };
             }
-            _delayedAddQueue = new Queue<Type>();
+            _delayedAddQueue = new Queue<(Type, float)>();
             _defaultWorld = defaultWorld;
             _worlds = new Dictionary<string, EcsWorld>(32);
             _allSystems = new List<IEcsSystem>(128);
             _injectedSingletons = new Dictionary<Type, object>();
             _injected = new Dictionary<string, object>();
             _constructorParams = new object[] { this };
+            _root = new StringTreeRoot();
+            _tickedSystems = new Dictionary<string, List<EcsTickedSystem>>();
         }
 
-        public IReadOnlyDictionary<string, EcsWorld> AllNamedWorlds => _worlds;
 
         public int GetAllSystems(ref IEcsSystem[]? list)
         {
@@ -162,9 +201,9 @@ namespace EcsLite.Systems
         {
             while (_delayedAddQueue.Count > 0)
             {
-                Type type = _delayedAddQueue.Dequeue();
+                (Type, float) type = _delayedAddQueue.Dequeue();
 
-                IEcsSystem system = (IEcsSystem)Activator.CreateInstance(type, _constructorParams)!;
+                IEcsSystem system = (IEcsSystem)Activator.CreateInstance(type.Item1, _constructorParams)!;
                 _allSystems.Add(system);
                 if (system is IEcsRunSystem runSystem)
                 {
@@ -222,14 +261,14 @@ namespace EcsLite.Systems
         public void AddWorld(EcsWorld world, string name)
         {
 #if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
-            if (string.IsNullOrEmpty(name)) { throw new Exception("World name cant be null or empty."); }
+            if (string.IsNullOrEmpty(name)) { throw new Exception("World name can't be null or empty."); }
 #endif
             _worlds[name] = world;
         }
 
         public void Add<T>() where T : EcsSystem
         {
-            _delayedAddQueue.Enqueue(typeof(T));
+            _delayedAddQueue.Enqueue((typeof(T), _currentDelayTime));
         }
 
         //public void Add(IEcsSystem system)
@@ -245,18 +284,22 @@ namespace EcsLite.Systems
         //    }
         //}
 
-        public void Run()
+
+        public void Run(double elapsed)
         {
             _currentBucket = 0;
-
+            _totalTime += elapsed;
+            _deltaTime = elapsed;
+            _deltaTimeFloat = (float)elapsed;
             for (int i = 0; i < _bucketCount; i++)
             {
-                //Wait for activation
+                //Signal activation
                 _barrier1.SignalAndWait();
                 DoWork(0);
+                //Wait for others to finsh their work
                 _barrier2.SignalAndWait();
                 //Set next working bucket
-                Interlocked.Increment(ref _currentBucket);
+                _currentBucket++;
             }
         }
 
@@ -273,15 +316,17 @@ namespace EcsLite.Systems
                     return;
                 }
                 DoWork(threadId);
+                //Wait for others to finish their work
                 _barrier2.SignalAndWait();
             }
         }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         void DoWork(int threadId)
         {
-            var systems = _buckets[_currentBucket].ParallelRunSystems;
-            int count = systems?.Count ?? 0;
-            int systemsPerThread = Math.DivRem(count, _threads.Length + 1, out var remainder);
+            var runSystems = _buckets[_currentBucket].ParallelRunSystems;
+            int count = runSystems?.Count ?? 0;
+            int systemsPerThread = Math.DivRem(count, _numThreads, out var remainder);
             if (remainder != 0)
             {
                 systemsPerThread++;
@@ -294,7 +339,8 @@ namespace EcsLite.Systems
                 {
                     break;
                 }
-                systems![index].Run(this, threadId);
+
+                runSystems![index].Run(this, threadId, _deltaTimeFloat);
             }
         }
 
