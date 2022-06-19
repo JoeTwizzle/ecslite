@@ -66,7 +66,8 @@ world.DelEntity (entity);
 ## Component
 Container for user data without / with small logic inside:
 ```csharp
-struct Component1 {
+struct Component1 
+{
     public int Id;
     public string Name;
 }
@@ -76,24 +77,35 @@ Components can be added / requested / removed through [component pools](#ecspool
 ## System
 Сontainer for logic for processing filtered entities. User class should implement at least one of `IEcsInitSystem`, `IEcsDestroySystem`, `IEcsRunSystem` (or other supported) interfaces:
 ```csharp
-class UserSystem : IEcsPreInitSystem, IEcsInitSystem, IEcsRunSystem, IEcsDestroySystem, IEcsPostDestroySystem {
-    public void PreInit (EcsSystems systems) {
+class UserSystem : EcsSystem, IEcsPreInitSystem, IEcsInitSystem, IEcsRunSystem, IEcsDestroySystem, IEcsPostDestroySystem 
+{    
+    public UserSystem(EcsSystems systems) : base(systems)
+    {
+
+    }
+    
+    public void PreInit (EcsSystems systems) 
+    {
         // Will be called once during EcsSystems.Init() call and before IEcsInitSystem.Init().
     }
     
-    public void Init (EcsSystems systems) {
+    public void Init (EcsSystems systems) 
+    {
         // Will be called once during EcsSystems.Init() call and after IEcsPreInitSystem.PreInit().
     }
     
-    public void Run (EcsSystems systems) {
+    public void Run (EcsSystems systems) 
+    {
         // Will be called on each EcsSystems.Run() call.
     }
 
-    public void Destroy (EcsSystems systems) {
+    public void Destroy (EcsSystems systems) 
+    {
         // Will be called once during EcsSystems.Destroy() call and before IEcsPostDestroySystem.PostDestroy().
     }
     
-    public void PostDestroy (EcsSystems systems) {
+    public void PostDestroy (EcsSystems systems) 
+    {
         // Will be called once during EcsSystems.Destroy() call and after IEcsDestroySystem.Destroy().
     }
 }
@@ -102,23 +114,12 @@ class UserSystem : IEcsPreInitSystem, IEcsInitSystem, IEcsRunSystem, IEcsDestroy
 # Data sharing
 Instance of any custom type can be shared between all systems:
 ```csharp
-class SharedData {
-    public string PrefabsPath;
-}
-...
-SharedData sharedData = new SharedData { PrefabsPath = "Items/{0}" };
-EcsSystems systems = new EcsSystems (world, sharedData);
-systems
-    .Add (new TestSystem1 ())
-    .Init ();
-...
-class TestSystem1 : IEcsInitSystem {
-    public void Init(EcsSystems systems) {
-        SharedData shared = systems.GetShared<SharedData> (); 
-        string prefabPath = string.Format (shared.PrefabsPath, 123);
-        // prefabPath = "Items/123" here.
-    } 
-}
+EcsSystemsBuilder builder = new EcsSystemsBuilder(world);
+builder.Add<UserSystem>();
+builder.Inject("Test", "I like trains.");
+builder.InjectSingleton(new TestSingleton());
+var systems = builder.Finish(1);
+systems.Init();
 ```
 
 # Special classes
@@ -144,32 +145,37 @@ pool.Del (entity);
 ## EcsFilter
 Container for keeping filtered entities with specified component list:
 ```csharp
-class WeaponSystem : IEcsInitSystem, IEcsRunSystem {
-    public void Init (EcsSystems systems) {
-        // We want to get default world instance...
-        EcsWorld world = systems.GetWorld ();
-        
-        // and create test entity...
-        int entity = world.NewEntity ();
-        
-        // with "Weapon" component on it.
-        var weapons = world.GetPool<Weapon>();
+//For multithreading we need to specify which components we Read/Write from
+[EcsWrite("Default World", typeof(Weapon))]
+class WeaponSystem : EcsSystem, IEcsInitSystem, IEcsRunSystem 
+{
+    private readonly EcsWorld world;
+    private readonly EcsPool<InitStruct> weaponPool;
+    private readonly EcsFilter weaponFilter;
+    public WeaponSystem(EcsSystems systems) : base(systems)
+    {
+         // We want to get the default world instance.
+         world = GetWorld();
+         // We want to get the Pool of weapon components in this world
+         weaponPool = GetPool<Weapon>();
+         // We want to filter entities with "Weapon" and without "Health".
+         weaponFilter = world.FilterInc<Weapon>().Exc<Health>().End();
+    }
+    
+    public void Init (EcsSystems systems) 
+    {
+        // Create entity
+        int entity = world.NewEntity();
+        // Add Weapon Component to entity
         weapons.Add (entity);
     }
 
-    public void Run (EcsSystems systems) {
-        EcsWorld world = systems.GetWorld ();
-        // We want to get entities with "Weapon" and without "Health".
-        // You can cache this filter somehow if you want.
-        var filter = world.Filter<Weapon> ().Exc<Health> ().End ();
-        
-        // We want to get pool of "Weapon" components.
-        // You can cache this pool somehow if you want.
-        var weapons = world.GetPool<Weapon>();
-        
-        foreach (int entity in filter) {
-            ref Weapon weapon = ref weapons.Get (entity);
-            weapon.Ammo = System.Math.Max (0, weapon.Ammo - 1);
+    public void Run (EcsSystems systems) 
+    {
+        foreach (int entity in weaponFilter) 
+        {
+            ref Weapon weapon = ref weaponPool.Get(entity);
+            weapon.Ammo = Math.Max(0, weapon.Ammo - 1);
         }
     }
 }
@@ -187,31 +193,40 @@ Root level container for all entities / components, works like isolated environm
 ## EcsSystems
 Group of systems to process `EcsWorld` instance:
 ```csharp
-class Startup : MonoBehaviour {
+class Startup : MonoBehaviour 
+{
     EcsWorld _world;
     EcsSystems _systems;
 
-    void Start () {
+    void Start () 
+    {
         // create ecs environment.
-        _world = new EcsWorld ();
-        _systems = new EcsSystems (_world)
-            .Add (new WeaponSystem ());
+        _world = new EcsWorld();
+        _world.AllowPool<Weapon>();
+        _world.AllowPool<Health>();
+        EcsSystemsBuilder builder = new EcsSystemsBuilder(_world);
+        builder.Add<WeaponSystem>();
+        _systems = builder.Finish(1);
         _systems.Init ();
     }
     
-    void Update () {
+    void Update () 
+    {
         // process all dependent systems.
         _systems?.Run ();
     }
 
-    void OnDestroy () {
+    void OnDestroy () 
+    {
         // destroy systems logical group.
-        if (_systems != null) {
+        if (_systems != null) 
+        {
             _systems.Destroy ();
             _systems = null;
         }
         // destroy world.
-        if (_world != null) {
+        if (_world != null) 
+        {
             _world.Destroy ();
             _world = null;
         }
@@ -223,47 +238,65 @@ class Startup : MonoBehaviour {
 
 # Engine integration
 
-## Unity
-> Tested on unity 2020.3 (but not dependent on it) and contains assembly definition for compiling to separate assembly file for performance reason.
+## Unity \[TODO]
+> Unity does not yet support c# 10 preview or c# 11+. A known workaround exists, please open an issue if you want to use Unity.  
+> \[Previous versions] Tested on unity 2020.3 (but not dependent on it) and contains assembly definition for compiling to separate assembly file for performance reason.
 
 [Unity editor integration](https://github.com/LeoECSCommunity/ecslite-unityeditor) contains code templates and world debug viewer.
 
 ## Custom engine
-> C#7.3 or above required for this framework.
+> C#10 with preview features enabled or above required for this framework.
 
 Code example - each part should be integrated in proper place of engine execution flow.
 ```csharp
 using Leopotam.EcsLite;
 
-class EcsStartup {
+class EcsStartup 
+{
     EcsWorld _world;
     EcsSystems _systems;
 
     // Initialization of ecs world and systems.
-    void Init () {        
-        _world = new EcsWorld ();
-        _systems = new EcsSystems (_world);
-        _systems
-            // register additional worlds here.
-            // .AddWorld (customWorldInstance, "events")
-            // register your systems here, for example:
-            // .Add (new TestSystem1 ())
-            // .Add (new TestSystem2 ())
-            .Init ();
+    void Init ()
+    {
+        _world = new EcsWorld();
+        _world.AllowPool<InitStruct>();
+        _world.AllowPool<NormalStruct>();
+        _world.AllowPool<CTORStruct>();
+    
+        EcsSystemsBuilder builder = new EcsSystemsBuilder(world);
+        builder.SetTickDelay(0); //Run as fast as possible
+        builder.SetGroup("Test");
+        builder.Add<TestRunSystemA>();
+        builder.Add<TestRunSystemB>();
+        builder.SetTickDelay(1f / 60f); //Run 60 times a second
+        builder.ClearGroup();
+        builder.Add<TestRunSystemC>();
+        builder.Add<TestRunSystemD>();
+        builder.SetTickDelay(1f / 20f);//Run 20 times a second
+        builder.Add<TestRunSystemE>();
+        builder.Inject("Test", "I like trains.");
+        builder.InjectSingleton(new TestSingleton());
+        _systems = builder.Finish(4); //Set number of threads to 4
+        _systems.Init();
     }
 
     // Engine update loop.
-    void UpdateLoop () {
+    void UpdateLoop () 
+    {
         _systems?.Run ();
     }
 
     // Cleanup.
-    void Destroy () {
-        if (_systems != null) {
+    void Destroy () 
+    {
+        if (_systems != null) 
+        {
             _systems.Destroy ();
             _systems = null;
         }
-        if (_world != null) {
+        if (_world != null) 
+        {
             _world.Destroy ();
             _world = null;
         }
@@ -307,57 +340,26 @@ No personal support or any guarantees.
 
 # FAQ
 
-### What is the difference from Ecs-full?
-
-I prefer to name them `lite` (ecs-lite) and `classic` (ecs-full). Main differences between them (based on `lite`):
-* Codebase decreased by 50% (easier to maintain and extend).
-* Zero static data in core.
-* No caches for components in filter (less memory consuming).
-* Fast access to any component on any entity (with performance of cached filter components in `classic`).
-* No limits to amount of filter contraints (filter is not generic class anymore).
-* Performance is similar to `classic`, maybe slightly better in some cases (worse in some corner cases on very huge amount of data).
-* Is aimed at using multiple worlds at same time (can be useful to keep memory consumption low on huge amount of short living components like "events").
-* No reflection at runtime (can be used with aggressive code stripping).
-* No data injection through reflection by default (you can use custom shared class between systems with required data or `ecslite-di` from extension's list).
-* Entities switched back to `int` (memory consuming decreased). Saving entity as component field supported through packing to `classic` `EcsEntity`-similar struct.
-* Small core, all new features can be added through extension repos.
-* All new features will be added to `lite` only, `classic` looks stable and mature enough - no new features, bugfixes only.
-
-### I want to process one system at MonoBehaviour.Update() and another - at MonoBehaviour.FixedUpdate(). How can I do it?
-
-For splitting systems by `MonoBehaviour`-method multiple `EcsSystems` logical groups should be used:
-```csharp
-EcsSystems _update;
-EcsSystems _fixedUpdate;
-
-void Start () {
-    EcsWorld world = new EcsWorld ();
-    _update = new EcsSystems (world).Add (new UpdateSystem ());
-    _update.Init ();
-    _fixedUpdate = new EcsSystems (world).Add (new FixedUpdateSystem ());
-    _fixedUpdate.Init ();
-}
-
-void Update () {
-    _update.Run ();
-}
-
-void FixedUpdate () {
-    _fixedUpdate.Run ();
-}
-```
-
 ### I copy&paste my reset components code again and again. How can I do it in other manner?
 
 If you want to simplify your code and keep reset/init code at one place, you can setup custom handler to process cleanup / initialization for component:
 ```csharp
-struct MyComponent : IEcsAutoReset<MyComponent> {
+struct MyComponent : IEcsInit<MyComponent>, IEcsDestroy<MyComponent>
+{
     public int Id;
-    public object LinkToAnotherComponent;
+    public object? LinkToAnotherComponent;
+    public IDisposable? MyDisposable;
 
-    public void AutoReset (ref MyComponent c) {
+    public static void OnInit(ref MyComponent c) 
+    {
         c.Id = 2;
         c.LinkToAnotherComponent = null;
+        c.MyDisposable = null;
+    }
+    
+    public static void OnDestroy(ref MyComponent c) 
+    {
+        c.MyDisposable?.Dispose();
     }
 }
 ```
@@ -373,10 +375,12 @@ int entity = world.NewEntity ();
 EcsPackedEntity packed = world.PackEntity (entity);
 EcsPackedEntityWithWorld packedWithWorld = world.PackEntityWithWorld (entity);
 ...
-if (packed.Unpack (world, out int unpacked)) {
+if (packed.Unpack (world, out int unpacked)) 
+{
     // unpacked is valid and can be used.
 }
-if (packedWithWorld.Unpack (out EcsWorld unpackedWorld, out int unpackedWithWorld)) {
+if (packedWithWorld.Unpack (out EcsWorld unpackedWorld, out int unpackedWithWorld)) 
+{
     // unpackedWithWorld is valid and can be used.
 }
 ```
@@ -386,28 +390,35 @@ if (packedWithWorld.Unpack (out EcsWorld unpackedWorld, out int unpackedWithWorl
 You can use `LEOECSLITE_WORLD_EVENTS` definition to enable custom event listeners support on worlds:
 
 ```csharp
-class TestWorldEventListener : IEcsWorldEventListener {
-    public void OnEntityCreated (int entity) {
+class TestWorldEventListener : IEcsWorldEventListener 
+{
+    public void OnEntityCreated (int entity) 
+    {
         // entity created - raises on world.NewEntity().
     }
 
-    public void OnEntityChanged (int entity) {
+    public void OnEntityChanged (int entity) 
+    {
         // entity changed - raises on pool.Add() / pool.Del().
     }
 
-    public void OnEntityDestroyed (int entity) {
+    public void OnEntityDestroyed (int entity) 
+    {
         // entity destroyed - raises on world.DelEntity() or last component removing.
     }
 
-    public void OnFilterCreated (EcsFilter filter) {
+    public void OnFilterCreated (EcsFilter filter) 
+    {
         // filter created - raises on world.Filter().End() for brand new filter.
     }
 
-    public void OnWorldResized (int newSize) {
+    public void OnWorldResized (int newSize) 
+    {
         // world resized - raises on world/pools resizing when no room for entity at world.NewEntity() call.
     }
 
-    public void OnWorldDestroyed (EcsWorld world) {
+    public void OnWorldDestroyed (EcsWorld world) 
+    {
         // world destroyed - raises on world.Destroy().
     }
 }
@@ -422,12 +433,15 @@ world.AddEventListener (listener);
 You can use `LEOECSLITE_FILTER_EVENTS` definition to enable custom event listeners support on filters:
 
 ```csharp
-class TestFilterEventListener : IEcsFilterEventListener {
-    public void OnEntityAdded (int entity) {
+class TestFilterEventListener : IEcsFilterEventListener 
+{
+    public void OnEntityAdded (int entity) 
+    {
         // entity added to filter.
     }
 
-    public void OnEntityRemoved (int entity) {
+    public void OnEntityRemoved (int entity) 
+    {
         // entity removed from filter.
     }
 }
