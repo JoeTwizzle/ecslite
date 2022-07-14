@@ -13,13 +13,13 @@ using Unity.IL2CPP.CompilerServices;
 
 namespace EcsLite
 {
-    public struct EcsPackedEntity
+    public struct EcsLocalEntity
     {
         internal int Id;
         internal int Gen;
     }
 
-    public struct EcsPackedEntityWithWorld
+    public struct EcsEntity
     {
         internal int Id;
         internal int Gen;
@@ -32,7 +32,7 @@ namespace EcsLite
             get
             {
                 object[]? list = null;
-                if (World != null && World.IsAlive() && World.IsEntityAliveInternal(Id) && World.GetEntityGen(Id) == Gen)
+                if (World != null && World.IsAlive() && World.IsEntityAlive(Id) && World.GetEntityGen(Id) == Gen)
                 {
                     World.GetComponents(Id, ref list);
                 }
@@ -44,7 +44,7 @@ namespace EcsLite
         {
             get
             {
-                if (World != null && World.IsAlive() && World.IsEntityAliveInternal(Id) && World.GetEntityGen(Id) == Gen)
+                if (World != null && World.IsAlive() && World.IsEntityAlive(Id) && World.GetEntityGen(Id) == Gen)
                 {
                     return World.GetComponentsCount(Id);
                 }
@@ -56,7 +56,7 @@ namespace EcsLite
         public override string ToString()
         {
             if (Id == 0 && Gen == 0) { return "Entity-Null"; }
-            if (World == null || !World.IsAlive() || !World.IsEntityAliveInternal(Id) || World.GetEntityGen(Id) != Gen) { return "Entity-NonAlive"; }
+            if (World == null || !World.IsAlive() || !World.IsEntityAlive(Id) || World.GetEntityGen(Id) != Gen) { return "Entity-NonAlive"; }
             System.Type[]? types = null;
             var count = World.GetComponentTypes(Id, ref types);
             System.Text.StringBuilder? sb = null;
@@ -81,18 +81,18 @@ namespace EcsLite
     public static class EcsEntityExtensions
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EcsPackedEntity PackEntity(this EcsWorld world, int entity)
+        public static EcsLocalEntity PackLocalEntity(this EcsWorld world, int entity)
         {
-            EcsPackedEntity packed;
+            EcsLocalEntity packed;
             packed.Id = entity;
             packed.Gen = world.GetEntityGen(entity);
             return packed;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool Unpack(this in EcsPackedEntity packed, EcsWorld world, out int entity)
+        public static bool Unpack(this in EcsLocalEntity packed, EcsWorld world, out int entity)
         {
-            if (!world.IsAlive() || !world.IsEntityAliveInternal(packed.Id) || world.GetEntityGen(packed.Id) != packed.Gen)
+            if (!world.IsAlive() || !world.IsEntityAlive(packed.Id) || world.GetEntityGen(packed.Id) != packed.Gen)
             {
                 entity = -1;
                 return false;
@@ -102,15 +102,15 @@ namespace EcsLite
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool EqualsTo(this in EcsPackedEntity a, in EcsPackedEntity b)
+        public static bool EqualsTo(this in EcsLocalEntity a, in EcsLocalEntity b)
         {
             return a.Id == b.Id && a.Gen == b.Gen;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EcsPackedEntityWithWorld PackEntityWithWorld(this EcsWorld world, int entity)
+        public static EcsEntity PackEntity(this EcsWorld world, int entity)
         {
-            EcsPackedEntityWithWorld packedEntity;
+            EcsEntity packedEntity;
             packedEntity.World = world;
             packedEntity.Id = entity;
             packedEntity.Gen = world.GetEntityGen(entity);
@@ -118,9 +118,9 @@ namespace EcsLite
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool Unpack(this in EcsPackedEntityWithWorld packedEntity, [NotNullWhen(true)] out EcsWorld? world, out int entity)
+        public static bool Unpack(this in EcsEntity packedEntity, [NotNullWhen(true)] out EcsWorld? world, out int entity)
         {
-            if (packedEntity.World == null || !packedEntity.World.IsAlive() || !packedEntity.World.IsEntityAliveInternal(packedEntity.Id) || packedEntity.World.GetEntityGen(packedEntity.Id) != packedEntity.Gen)
+            if (packedEntity.World == null || !packedEntity.World.IsAlive() || !packedEntity.World.IsEntityAlive(packedEntity.Id) || packedEntity.World.GetEntityGen(packedEntity.Id) != packedEntity.Gen)
             {
                 world = null;
                 entity = -1;
@@ -132,7 +132,7 @@ namespace EcsLite
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool EqualsTo(this in EcsPackedEntityWithWorld a, in EcsPackedEntityWithWorld b)
+        public static bool EqualsTo(this in EcsEntity a, in EcsEntity b)
         {
             return a.Id == b.Id && a.Gen == b.Gen && a.World == b.World;
         }

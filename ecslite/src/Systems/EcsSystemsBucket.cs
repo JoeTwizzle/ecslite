@@ -167,7 +167,7 @@ namespace EcsLite.Systems
         }
 
 
-        public void AddUnchecked(IEcsRunSystem system, float tickDelay)
+        public void AddUnchecked(IEcsRunSystem system)
         {
             if (parallelRunSystems == null)
             {
@@ -219,7 +219,7 @@ namespace EcsLite.Systems
                     }
                 }
             }
-            parallelRunSystems.Add(new EcsTickedSystem(system, tickDelay));
+            parallelRunSystems.Add(new EcsTickedSystem(system));
         }
     }
 }

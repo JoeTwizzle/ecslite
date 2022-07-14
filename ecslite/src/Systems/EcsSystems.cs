@@ -73,38 +73,54 @@ namespace EcsLite.Systems
     internal class EcsTickedSystem
     {
         public readonly IEcsRunSystem EcsSystem;
-        public readonly float TickDelay;
+        public float TickDelay;
+        public EcsTickMode TickMode;
         public float Accumulator;
         public bool Enabled;
 
-        public EcsTickedSystem(IEcsRunSystem ecsSystem, float tickDelay)
+        public EcsTickedSystem(IEcsRunSystem ecsSystem)
         {
             Enabled = true;
             EcsSystem = ecsSystem;
-            if (tickDelay <= 0)
-            {
-                tickDelay = float.Epsilon;
-            }
-            TickDelay = tickDelay;
-            Accumulator = 0;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         public void Run(EcsSystems systems, int threadId, float dt)
         {
-            Accumulator += dt;
-            if (Accumulator >= TickDelay)
+            if (Enabled)
             {
-                Accumulator %= TickDelay;
-                if (Enabled)
+                switch (TickMode)
                 {
-                    if (dt <= TickDelay)
-                    {
-                        EcsSystem.Run(systems, TickDelay, threadId);
-                    }
-                    else
-                    {
+                    case EcsTickMode.Loose:
                         EcsSystem.Run(systems, dt, threadId);
-                    }
+                        break;
+                    case EcsTickMode.SemiLoose:
+                        Accumulator += dt;
+                        if (Accumulator >= TickDelay)
+                        {
+                            EcsSystem.Run(systems, Accumulator, threadId);
+                            Accumulator = 0;
+                        }
+                        break;
+                    case EcsTickMode.SemiFixed:
+                        Accumulator += dt;
+                        while (Accumulator >= TickDelay)
+                        {
+                            float step = MathF.Min(TickDelay, Accumulator);
+                            EcsSystem.Run(systems, step, threadId);
+                            Accumulator -= step;
+                        }
+                        break;
+                    case EcsTickMode.Fixed:
+                        Accumulator += dt;
+                        while (Accumulator >= TickDelay)
+                        {
+                            EcsSystem.Run(systems, TickDelay, threadId);
+                            Accumulator -= TickDelay;
+                        }
+                        break;
+                    default:
+                        break;
                 }
             }
         }
@@ -144,13 +160,15 @@ namespace EcsLite.Systems
     public struct SystemCreateInfo
     {
         public Type Type;
+        public EcsTickMode TickMode;
         public float DelayTime;
         public string? GroupName;
         public bool GroupState;
 
-        public SystemCreateInfo(Type type, float delayTime, string? groupName, bool groupState)
+        public SystemCreateInfo(Type type, EcsTickMode tickMode, float delayTime, string? groupName, bool groupState)
         {
             Type = type;
+            TickMode = tickMode;
             DelayTime = delayTime;
             GroupName = groupName;
             GroupState = groupState;
@@ -175,6 +193,7 @@ namespace EcsLite.Systems
         private float _deltaTimeFloat;
         private bool _disposed;
         private int _currentBucket;
+        private int _currentSystem = 0;
         public int ThreadCount => _numThreads;
         public EcsWorld DefaultWorld => _defaultWorld;
         public IReadOnlyDictionary<string, EcsWorld> AllNamedWorlds => _worlds;
@@ -260,11 +279,13 @@ namespace EcsLite.Systems
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         public T GetSingleton<T>()
         {
             return (T)_injectedSingletons[typeof(T)];
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         public T GetInjected<T>(string identifier)
         {
 #if DEBUG
@@ -276,11 +297,13 @@ namespace EcsLite.Systems
             return (T)_injected[identifier];
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         public void EnableGroupNextFrame(string groupName)
         {
             SetGroupNextFrame(groupName, true);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         public void SetGroupNextFrame(string groupName, bool state)
         {
 #if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
@@ -296,6 +319,7 @@ namespace EcsLite.Systems
             _groupStateChanges.Enqueue((groupName, state));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         public void DisableGroupNextFrame(string groupName)
         {
             SetGroupNextFrame(groupName, false);
@@ -311,6 +335,7 @@ namespace EcsLite.Systems
             for (int i = 0; i < _buckets.Length; i++)
             {
                 //Signal activation
+                _currentSystem = 0;
                 _barrier1.SignalAndWait();
                 DoWork(0);
                 //Wait for others to finsh their work
@@ -364,22 +389,11 @@ namespace EcsLite.Systems
         void DoWork(int threadId)
         {
             var runSystems = _buckets[_currentBucket].ParallelRunSystems;
-            int count = runSystems?.Count ?? 0;
-            int systemsPerThread = Math.DivRem(count, _numThreads, out var remainder);
-            if (remainder != 0)
+            int index = Interlocked.Increment(ref _currentSystem) - 1;
+            while (index < runSystems!.Count)
             {
-                systemsPerThread++;
-            }
-            int startIndex = threadId * systemsPerThread;
-            for (int i = 0; i < systemsPerThread; i++)
-            {
-                int index = i + startIndex;
-                if (index >= count)
-                {
-                    break;
-                }
-
                 runSystems![index].Run(this, threadId, _deltaTimeFloat);
+                index = Interlocked.Increment(ref _currentSystem) - 1;
             }
         }
 

@@ -294,12 +294,16 @@ namespace EcsLite
 
         public EcsPool<T> GetPool<T>() where T : struct
         {
-            var poolType = typeof(T);
-            if (_poolHashes.TryGetValue(poolType, out var rawPool))
+            if (_poolHashes.TryGetValue(typeof(T), out var rawPool))
             {
                 return (EcsPool<T>)rawPool;
             }
             throw new InvalidOperationException($"This world does not allow a pool<{typeof(T).FullName}>");
+        }
+
+        public bool HasPool<T>() where T : struct
+        {
+            return _poolHashes.ContainsKey(typeof(T));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -334,7 +338,7 @@ namespace EcsLite
             return count;
         }
 
-        public int GetAllPools(ref IEcsPool[] pools)
+        public int GetAllPools(ref IEcsPool[]? pools)
         {
             var count = _poolsCount;
             if (pools == null || pools.Length < count)
@@ -403,7 +407,7 @@ namespace EcsLite
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal bool IsEntityAliveInternal(int entity)
+        public bool IsEntityAlive(int entity)
         {
             return entity >= 0 && entity < _entitiesCount && Entities[entity].Gen > 0;
         }

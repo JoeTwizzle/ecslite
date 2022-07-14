@@ -1,15 +1,34 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using System.Reflection;
 using System.Runtime.Serialization;
-using System.Text;
-using System.Reflection;
 
 namespace EcsLite.Systems
 {
+    public enum EcsTickMode
+    {
+        /// <summary>
+        /// Ignores any TickDelay set.
+        /// Runs once every call to update.
+        /// </summary>
+        Loose,
+        /// <summary>
+        /// Takes varying delta time sized steps.
+        /// Runs only at most at an interval of TickDelay.
+        /// </summary>
+        SemiLoose,
+        /// <summary>
+        /// Takes TickDelay sized steps.
+        /// If the remaining time is less than one tick, takes one remainder sized step.
+        /// </summary>
+        SemiFixed,
+        /// <summary>
+        /// Takes TickDelay sized steps.
+        /// If the remaining time is less than one tick the remainder is stored for the next iteration.
+        /// </summary>
+        Fixed
+    }
     public class EcsSystemsBuilder
     {
-        private static readonly System.Reflection.ConstructorInfo systemsCtor = typeof(EcsSystems).GetConstructor(new Type[] { typeof(int), typeof(EcsWorld), typeof(Dictionary<string, EcsWorld>), typeof(List<IEcsSystem>), typeof(Dictionary<string, object>), typeof(Dictionary<Type, object>), typeof(EcsSystemsBucket[]), typeof(Dictionary<string, List<EcsTickedSystem>>) })!;
+        private static readonly ConstructorInfo systemsCtor = typeof(EcsSystems).GetConstructor(new Type[] { typeof(int), typeof(EcsWorld), typeof(Dictionary<string, EcsWorld>), typeof(List<IEcsSystem>), typeof(Dictionary<string, object>), typeof(Dictionary<Type, object>), typeof(EcsSystemsBucket[]), typeof(Dictionary<string, List<EcsTickedSystem>>) })!;
         private readonly Queue<SystemCreateInfo> _delayedAddQueue;
         private readonly EcsWorld _defaultWorld;
         private readonly Dictionary<string, EcsWorld> _worlds;
@@ -21,6 +40,7 @@ namespace EcsLite.Systems
         private EcsSystemsBucket[] _buckets;
         private string? _currentGroupName;
         private float _currentDelayTime;
+        private EcsTickMode _currentTickMode;
         private bool _currentGroupState;
         private int _bucketCount;
 
@@ -35,17 +55,29 @@ namespace EcsLite.Systems
             _allSystems = new List<IEcsSystem>(128);
             _delayedAddQueue = new Queue<SystemCreateInfo>();
             _groups = new Dictionary<string, List<EcsTickedSystem>>(8);
+            _currentTickMode = EcsTickMode.Loose;
         }
 
         public EcsSystemsBuilder Add<T>() where T : EcsSystem
         {
-            _delayedAddQueue.Enqueue(new SystemCreateInfo(typeof(T), _currentDelayTime, _currentGroupName, _currentGroupState));
+            _delayedAddQueue.Enqueue(new SystemCreateInfo(typeof(T), _currentTickMode, _currentDelayTime, _currentGroupName, _currentGroupState));
             return this;
         }
 
+        public EcsSystemsBuilder SetTickMode(EcsTickMode tickMode)
+        {
+            _currentTickMode = tickMode;
+            return this;
+        }
+
+        /// <summary>
+        /// Sets the TickDelay for the next systems
+        /// </summary>
+        /// <param name="delay">Delay in seconds</param>
+        /// <returns></returns>
         public EcsSystemsBuilder SetTickDelay(float delay)
         {
-            _currentDelayTime = delay / 1000.0f;
+            _currentDelayTime = delay;
             return this;
         }
 
@@ -116,13 +148,15 @@ namespace EcsLite.Systems
                 _allSystems.Add(system);
                 if (system is IEcsRunSystem runSystem)
                 {
-                    int bucket = AddRunSystem(runSystem, info.DelayTime);
+                    int bucket = AddRunSystem(runSystem);
                     var tickedSystems = _buckets[bucket].ParallelRunSystems!;
                     var tickedSystem = tickedSystems[tickedSystems.Count - 1];
+                    tickedSystem.TickMode = info.TickMode;
+                    tickedSystem.TickDelay = info.DelayTime;
                     if (!string.IsNullOrWhiteSpace(info.GroupName))
                     {
                         tickedSystem.Enabled = info.GroupState;
-                        
+
                         _groups[info.GroupName].Add(tickedSystem);
                     }
                 }
@@ -134,7 +168,7 @@ namespace EcsLite.Systems
         /// </summary>
         /// <param name="system"></param>
         /// <returns>The index of the bucket that was inserted into</returns>
-        private int AddRunSystem(IEcsRunSystem system, float delayTime)
+        private int AddRunSystem(IEcsRunSystem system)
         {
             Span<Metric> metrics = stackalloc Metric[_bucketCount];
             for (int i = 0; i < _bucketCount; i++)
@@ -172,7 +206,7 @@ namespace EcsLite.Systems
             {
                 ref var bucket = ref _buckets[bestFitIndex];
                 bucket.GetFitMetric(system);
-                bucket.AddUnchecked(system, delayTime);
+                bucket.AddUnchecked(system);
                 return bestFitIndex;
             }
             else
@@ -180,7 +214,7 @@ namespace EcsLite.Systems
                 _bucketCount++;
                 EnsureBucketsSize();
                 _buckets[_bucketCount - 1].GetFitMetric(system);
-                _buckets[_bucketCount - 1].AddUnchecked(system, delayTime);
+                _buckets[_bucketCount - 1].AddUnchecked(system);
                 return _bucketCount - 1;
             }
         }

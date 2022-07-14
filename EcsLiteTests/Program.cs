@@ -58,14 +58,20 @@ class Program
         Console.WriteLine(normPool.Get(ent).a);
         Console.WriteLine(normPool.Get(ent2).a);
         EcsSystemsBuilder builder = new EcsSystemsBuilder(world);
+        builder.SetTickMode(EcsTickMode.Loose);
         builder.SetTickDelay(0); //Run as fast as possible
-        builder.SetGroup("Test");
+        builder.SetGroup("Test1");
         builder.Add<TestRunSystemA>();
         builder.Add<TestRunSystemB>();
-        builder.SetTickDelay(1f / 60f); //Run 60 times a second
-        builder.ClearGroup();
+        builder.SetTickMode(EcsTickMode.Fixed);
+        builder.SetTickDelay(1 / 60f); //Run 60 times a second
         builder.Add<TestRunSystemC>();
+        builder.SetGroup("Test2", false);
+        builder.SetTickMode(EcsTickMode.SemiLoose);
+        builder.SetTickDelay(1 / 60f); //Run 60 times a second
         builder.Add<TestRunSystemD>();
+        builder.ClearGroup();
+        builder.SetTickMode(EcsTickMode.Loose);
         builder.SetTickDelay(1f / 20f);//Run 20 times a second
         builder.Add<TestRunSystemE>();
         builder.Inject("Test", "I like trains.");
@@ -73,13 +79,25 @@ class Program
         var systems = builder.Finish(6);
         systems.Init();
         var watch = Stopwatch.StartNew();
-        double delta = double.Epsilon;
-        while (true)
-        {
-            double prev = watch.Elapsed.TotalSeconds;
+        double current = watch.Elapsed.TotalSeconds;
+        for (int i = 0; i < 5000; i++)
+        { 
+            double newTime = watch.Elapsed.TotalSeconds;
+            //Aviod delta of zero to not have potential divison by zero
+            double delta = Math.Max(double.Epsilon, newTime - current);
+            //We dont want to skip too much time. slow the game down instead.
+            if (delta > 0.25) 
+            {
+                delta = 0.25;
+            }
+            current = newTime;
+            //Reset every 5 minutes to avoid floating point imprecision
+            if (current >= 5 * 60) 
+            {
+                watch.Restart();
+                current = watch.Elapsed.TotalSeconds;
+            }
             systems.Run(delta);
-            double current = watch.Elapsed.TotalSeconds;
-            delta = current - prev;
         }
         Console.WriteLine("Disposing!");
         systems.Dispose();
@@ -135,7 +153,7 @@ class TestRunSystemC : EcsSystem, IEcsRunSystem
     {
         runs++;
         //Console.WriteLine($"Coolness: {singleton.Coolness}");
-        //Console.WriteLine($"Running C {id}");
+        Console.WriteLine($"Running C {dt}");
     }
 }
 
@@ -176,9 +194,17 @@ class TestRunSystemE : EcsSystem, IEcsRunSystem
     {
         runs++;
         if (elapsed < 10 && elapsed + dt > 10)
-            DisableGroupNextFrame("Test");
+        {
+            DisableGroupNextFrame("Test1");
+            EnableGroupNextFrame("Test2");
+        }
+
         if (elapsed < 20 && elapsed + dt > 20)
-            EnableGroupNextFrame("Test");
+        {
+            EnableGroupNextFrame("Test1");
+            DisableGroupNextFrame("Test2");
+        }
+
         elapsed += dt;
     }
 }
