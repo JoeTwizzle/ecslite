@@ -31,10 +31,11 @@ namespace EcsLite
         private readonly EcsWorld.Mask _mask;
         private int[] _denseEntities;
         private int _entitiesCount;
-        internal int[] SparseEntities;
+        private int[] SparseEntities;
         private int _lockCount;
         private DelayedOp[] _delayedOps;
         private int _delayedOpsCount;
+        private object _lockObj;
 #if ECSLITE_FILTER_EVENTS
         private IEcsFilterEventListener[] _eventListeners = new IEcsFilterEventListener[4];
         private int _eventListenersCount;
@@ -50,6 +51,7 @@ namespace EcsLite
             _delayedOps = new DelayedOp[512];
             _delayedOpsCount = 0;
             _lockCount = 0;
+            _lockObj = new object();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -92,7 +94,7 @@ namespace EcsLite
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void Lock()
         {
-            _lockCount++;
+            Interlocked.Increment(ref _lockCount);
         }
 
 #if ECSLITE_FILTER_EVENTS
@@ -115,7 +117,7 @@ namespace EcsLite
                 if (_eventListeners[i] == eventListener)
                 {
                     _eventListenersCount--;
-                    // cant fill gap with last element due listeners order is important.
+                    // cant fill gap with last element due listeners order being important.
                     Array.Copy(_eventListeners, i + 1, _eventListeners, i, _eventListenersCount - i);
                     break;
                 }
@@ -126,7 +128,10 @@ namespace EcsLite
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void ResizeSparseIndex(int capacity)
         {
-            Array.Resize(ref SparseEntities, capacity);
+            lock (_lockObj)
+            {
+                Array.Resize(ref SparseEntities, capacity);
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -138,47 +143,56 @@ namespace EcsLite
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void AddEntity(int entity)
         {
-            if (AddDelayedOp(true, entity)) { return; }
-            if (_entitiesCount == _denseEntities.Length)
+            lock (_lockObj)
             {
-                Array.Resize(ref _denseEntities, _entitiesCount << 1);
-            }
-            _denseEntities[_entitiesCount++] = entity;
-            SparseEntities[entity] = _entitiesCount;
+                if (AddDelayedOp(true, entity)) { return; }
+                if (_entitiesCount == _denseEntities.Length)
+                {
+                    Array.Resize(ref _denseEntities, _entitiesCount << 1);
+                }
+                _denseEntities[_entitiesCount++] = entity;
+                SparseEntities[entity] = _entitiesCount;
 #if ECSLITE_FILTER_EVENTS
-            ProcessEventListeners(true, entity);
+                ProcessEventListeners(true, entity);
 #endif
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void RemoveEntity(int entity)
         {
-            if (AddDelayedOp(false, entity)) { return; }
-            var idx = SparseEntities[entity] - 1;
-            SparseEntities[entity] = 0;
-            _entitiesCount--;
-            if (idx < _entitiesCount)
+            lock (_lockObj)
             {
-                _denseEntities[idx] = _denseEntities[_entitiesCount];
-                SparseEntities[_denseEntities[idx]] = idx + 1;
-            }
+                if (AddDelayedOp(false, entity)) { return; }
+                var idx = SparseEntities[entity] - 1;
+                SparseEntities[entity] = 0;
+                _entitiesCount--;
+                if (idx < _entitiesCount)
+                {
+                    _denseEntities[idx] = _denseEntities[_entitiesCount];
+                    SparseEntities[_denseEntities[idx]] = idx + 1;
+                }
 #if ECSLITE_FILTER_EVENTS
-            ProcessEventListeners(false, entity);
+                ProcessEventListeners(false, entity);
 #endif
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         bool AddDelayedOp(bool added, int entity)
         {
-            if (_lockCount <= 0) { return false; }
-            if (_delayedOpsCount == _delayedOps.Length)
+            lock (_lockObj)
             {
-                Array.Resize(ref _delayedOps, _delayedOpsCount << 1);
+                if (_lockCount <= 0) { return false; }
+                if (_delayedOpsCount == _delayedOps.Length)
+                {
+                    Array.Resize(ref _delayedOps, _delayedOpsCount << 1);
+                }
+                ref var op = ref _delayedOps[_delayedOpsCount++];
+                op.Added = added;
+                op.Entity = entity;
+                return true;
             }
-            ref var op = ref _delayedOps[_delayedOpsCount++];
-            op.Added = added;
-            op.Entity = entity;
-            return true;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -187,7 +201,7 @@ namespace EcsLite
 #if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
             if (_lockCount <= 0) { throw new Exception($"Invalid lock-unlock balance for \"{GetType().Name}\"."); }
 #endif
-            _lockCount--;
+            Interlocked.Decrement(ref _lockCount);
             if (_lockCount == 0 && _delayedOpsCount > 0)
             {
                 for (int i = 0, iMax = _delayedOpsCount; i < iMax; i++)
@@ -290,7 +304,7 @@ namespace EcsLite
         }
     }
 
-    public struct SingleComponentFilter<T> where T : struct
+    public readonly struct SingleComponentFilter<T> where T : struct
     {
         readonly EcsFilter _filter;
         readonly EcsPool<T> _components;

@@ -35,6 +35,11 @@ class Program
     static int Main(string[] args)
     {
         EcsWorld world = new EcsWorld();
+        //world.FilterInc<int>().End();
+        //world.FilterInc<float>().End();
+        //world.FilterInc<int>().Inc<float>().Exc<double>().End();
+        //AddFloat
+        //AddDouble
         world.AllowPool<InitStruct>();
         world.AllowPool<NormalStruct>();
         world.AllowPool<CTORStruct>();

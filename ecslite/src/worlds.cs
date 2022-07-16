@@ -38,7 +38,7 @@ namespace EcsLite
         private int _masksCount;
         private bool _disposed;
 
-#if DEBUG || LEOECSLITE_WORLD_EVENTS
+#if DEBUG || ECSLITE_WORLD_EVENTS
         readonly List<IEcsWorldEventListener> _eventListeners;
 
         public void AddEventListener(IEcsWorldEventListener listener)
@@ -111,7 +111,7 @@ namespace EcsLite
             // masks.
             _masks = new Mask[64];
             _masksCount = 0;
-#if DEBUG || LEOECSLITE_WORLD_EVENTS
+#if DEBUG || ECSLITE_WORLD_EVENTS
             _eventListeners = new List<IEcsWorldEventListener>(4);
 #endif
             _disposed = false;
@@ -137,7 +137,7 @@ namespace EcsLite
             _allFilters.Clear();
             _filtersByIncludedComponents = Array.Empty<List<EcsFilter>>();
             _filtersByExcludedComponents = Array.Empty<List<EcsFilter>>();
-#if DEBUG || LEOECSLITE_WORLD_EVENTS
+#if DEBUG || ECSLITE_WORLD_EVENTS
             for (var ii = _eventListeners.Count - 1; ii >= 0; ii--)
             {
                 _eventListeners[ii].OnWorldDisposed(this);
@@ -176,7 +176,7 @@ namespace EcsLite
                     {
                         _allFilters[i].ResizeSparseIndex(newSize);
                     }
-#if DEBUG || LEOECSLITE_WORLD_EVENTS
+#if DEBUG || ECSLITE_WORLD_EVENTS
                     for (int ii = 0, iMax = _eventListeners.Count; ii < iMax; ii++)
                     {
                         _eventListeners[ii].OnWorldResized(newSize);
@@ -189,7 +189,7 @@ namespace EcsLite
 #if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
             _leakedEntities.Add(entity);
 #endif
-#if DEBUG || LEOECSLITE_WORLD_EVENTS
+#if DEBUG || ECSLITE_WORLD_EVENTS
             for (int ii = 0, iMax = _eventListeners.Count; ii < iMax; ii++)
             {
                 _eventListeners[ii].OnEntityCreated(entity);
@@ -234,7 +234,7 @@ namespace EcsLite
                 Array.Resize(ref _recycledEntities, _recycledEntitiesCount << 1);
             }
             _recycledEntities[_recycledEntitiesCount++] = entity;
-#if DEBUG || LEOECSLITE_WORLD_EVENTS
+#if DEBUG || ECSLITE_WORLD_EVENTS
             for (int ii = 0, iMax = _eventListeners.Count; ii < iMax; ii++)
             {
                 _eventListeners[ii].OnEntityDestroyed(entity);
@@ -452,7 +452,7 @@ namespace EcsLite
                     filter.AddEntity(i);
                 }
             }
-#if DEBUG || LEOECSLITE_WORLD_EVENTS
+#if DEBUG || ECSLITE_WORLD_EVENTS
             for (int ii = 0, iMax = _eventListeners.Count; ii < iMax; ii++)
             {
                 _eventListeners[ii].OnFilterCreated(filter);
@@ -530,14 +530,14 @@ namespace EcsLite
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool IsMaskCompatible(Mask filterMask, int entity)
         {
-            for (int i = 0, iMax = filterMask.IncludeCount; i < iMax; i++)
+            for (int i = 0; i < filterMask.IncludeCount; i++)
             {
                 if (!_pools[filterMask.Include[i]].Has(entity))
                 {
                     return false;
                 }
             }
-            for (int i = 0, iMax = filterMask.ExcludeCount; i < iMax; i++)
+            for (int i = 0; i < filterMask.ExcludeCount; i++)
             {
                 if (_pools[filterMask.Exclude[i]].Has(entity))
                 {
@@ -550,7 +550,7 @@ namespace EcsLite
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool IsMaskCompatibleWithout(Mask filterMask, int entity, int componentId)
         {
-            for (int i = 0, iMax = filterMask.IncludeCount; i < iMax; i++)
+            for (int i = 0; i < filterMask.IncludeCount; i++)
             {
                 var typeId = filterMask.Include[i];
                 if (typeId == componentId || !_pools[typeId].Has(entity))
@@ -558,7 +558,7 @@ namespace EcsLite
                     return false;
                 }
             }
-            for (int i = 0, iMax = filterMask.ExcludeCount; i < iMax; i++)
+            for (int i = 0; i < filterMask.ExcludeCount; i++)
             {
                 var typeId = filterMask.Exclude[i];
                 if (typeId != componentId && _pools[typeId].Has(entity))
@@ -713,7 +713,7 @@ namespace EcsLite
 
     }
 
-#if DEBUG || LEOECSLITE_WORLD_EVENTS
+#if DEBUG || ECSLITE_WORLD_EVENTS
     public interface IEcsWorldEventListener
     {
         void OnEntityCreated(int entity);
