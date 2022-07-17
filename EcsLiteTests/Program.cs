@@ -124,7 +124,7 @@ class TestRunSystemA : EcsSystem, IEcsRunSystem
     {
     }
 
-    public void Run(EcsSystems systems, float dt, int id)
+    public void Run(float dt, int id)
     {
         runs++;
         Console.WriteLine($"Running A {dt}");
@@ -138,7 +138,7 @@ class TestRunSystemB : EcsSystem, IEcsRunSystem
     {
 
     }
-    public void Run(EcsSystems systems, float dt, int id)
+    public void Run(float dt, int id)
     {
         runs++;
         //Console.WriteLine($"TestString: \"{GetInjected<string>("Test")}\"");
@@ -154,7 +154,7 @@ class TestRunSystemC : EcsSystem, IEcsRunSystem
     {
         singleton = GetSingleton<TestSingleton>();
     }
-    public void Run(EcsSystems systems, float dt, int id)
+    public void Run(float dt, int id)
     {
         runs++;
         //Console.WriteLine($"Coolness: {singleton.Coolness}");
@@ -176,7 +176,7 @@ class TestRunSystemD : EcsSystem, IEcsRunSystem
         singleton = GetSingleton<TestSingleton>();
     }
 
-    public void Run(EcsSystems systems, float dt, int id)
+    public void Run(float dt, int id)
     {
         foreach (var item in filter)
         {
@@ -195,7 +195,7 @@ class TestRunSystemE : EcsSystem, IEcsRunSystem
     public TestRunSystemE(EcsSystems systems) : base(systems)
     {
     }
-    public void Run(EcsSystems systems, float dt, int id)
+    public void Run(float dt, int id)
     {
         runs++;
         if (elapsed < 10 && elapsed + dt > 10)

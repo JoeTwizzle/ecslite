@@ -475,7 +475,7 @@ namespace EcsLite
                         if (IsMaskCompatible(filter.GetMask(), entity))
                         {
 #if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
-                            if (filter.SparseEntities[entity] > 0) { throw new Exception("Entity already in filter."); }
+                            if (filter.GetSparseEntities()[entity] > 0) { throw new Exception("Entity already in filter."); }
 #endif
                             filter.AddEntity(entity);
                         }
@@ -488,7 +488,7 @@ namespace EcsLite
                         if (IsMaskCompatibleWithout(filter.GetMask(), entity, componentType))
                         {
 #if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
-                            if (filter.SparseEntities[entity] == 0) { throw new Exception("Entity not in filter."); }
+                            if (filter.GetSparseEntities()[entity] == 0) { throw new Exception("Entity not in filter."); }
 #endif
                             filter.RemoveEntity(entity);
                         }
@@ -505,7 +505,7 @@ namespace EcsLite
                         if (IsMaskCompatible(filter.GetMask(), entity))
                         {
 #if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
-                            if (filter.SparseEntities[entity] == 0) { throw new Exception("Entity not in filter."); }
+                            if (filter.GetSparseEntities()[entity] == 0) { throw new Exception("Entity not in filter."); }
 #endif
                             filter.RemoveEntity(entity);
                         }
@@ -518,7 +518,7 @@ namespace EcsLite
                         if (IsMaskCompatibleWithout(filter.GetMask(), entity, componentType))
                         {
 #if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
-                            if (filter.SparseEntities[entity] > 0) { throw new Exception("Entity already in filter."); }
+                            if (filter.GetSparseEntities()[entity] > 0) { throw new Exception("Entity already in filter."); }
 #endif
                             filter.AddEntity(entity);
                         }

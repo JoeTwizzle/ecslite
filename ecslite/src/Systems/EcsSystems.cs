@@ -68,9 +68,47 @@ namespace EcsLite.Systems
         {
             systems.DisableGroupNextFrame(groupName);
         }
+
+        protected void ToggleGroupNextFrame(string groupName)
+        {
+            systems.ToggleGroupNextFrame(groupName);
+        }
+
+        protected bool GetGroupState(string groupName)
+        {
+            return systems.GetGroupState(groupName);
+        }
     }
 
-    internal class EcsTickedSystem
+    internal sealed class EcsGroup
+    {
+        private bool enabled;
+        public readonly List<EcsTickedSystem> TickedSystems;
+
+        public bool Enabled
+        {
+            get => enabled;
+            set
+            {
+                if (TickedSystems != null)
+                {
+                    foreach (var system in TickedSystems)
+                    {
+                        system.Enabled = value;
+                    }
+                }
+                enabled = value;
+            }
+        }
+
+        public EcsGroup()
+        {
+            enabled = true;
+            TickedSystems = new List<EcsTickedSystem>();
+        }
+    }
+
+    internal sealed class EcsTickedSystem
     {
         public readonly IEcsRunSystem EcsSystem;
         public float TickDelay;
@@ -92,13 +130,13 @@ namespace EcsLite.Systems
                 switch (TickMode)
                 {
                     case EcsTickMode.Loose:
-                        EcsSystem.Run(systems, dt, threadId);
+                        EcsSystem.Run(dt, threadId);
                         break;
                     case EcsTickMode.SemiLoose:
                         Accumulator += dt;
                         if (Accumulator >= TickDelay)
                         {
-                            EcsSystem.Run(systems, Accumulator, threadId);
+                            EcsSystem.Run(Accumulator, threadId);
                             Accumulator = 0;
                         }
                         break;
@@ -107,7 +145,7 @@ namespace EcsLite.Systems
                         while (Accumulator >= TickDelay)
                         {
                             float step = MathF.Min(TickDelay, Accumulator);
-                            EcsSystem.Run(systems, step, threadId);
+                            EcsSystem.Run(step, threadId);
                             Accumulator -= step;
                         }
                         break;
@@ -115,7 +153,7 @@ namespace EcsLite.Systems
                         Accumulator += dt;
                         while (Accumulator >= TickDelay)
                         {
-                            EcsSystem.Run(systems, TickDelay, threadId);
+                            EcsSystem.Run(TickDelay, threadId);
                             Accumulator -= TickDelay;
                         }
                         break;
@@ -130,27 +168,27 @@ namespace EcsLite.Systems
 
     public interface IEcsPreInitSystem : IEcsSystem
     {
-        void PreInit(EcsSystems systems);
+        void PreInit();
     }
 
     public interface IEcsInitSystem : IEcsSystem
     {
-        void Init(EcsSystems systems);
+        void Init();
     }
 
     public interface IEcsRunSystem : IEcsSystem
     {
-        void Run(EcsSystems systems, float elapsed, int threadId);
+        void Run(float elapsed, int threadId);
     }
 
     public interface IEcsDestroySystem : IEcsSystem
     {
-        void Destroy(EcsSystems systems);
+        void Destroy();
     }
 
     public interface IEcsPostDestroySystem : IEcsSystem
     {
-        void PostDestroy(EcsSystems systems);
+        void PostDestroy();
     }
 
 #if ENABLE_IL2CPP
@@ -185,7 +223,7 @@ namespace EcsLite.Systems
         private readonly Barrier _barrier2;
         private readonly Dictionary<string, object> _injected;
         private readonly Dictionary<Type, object> _injectedSingletons;
-        private readonly Dictionary<string, List<EcsTickedSystem>> _groups;
+        private readonly Dictionary<string, EcsGroup> _groups;
         private readonly ConcurrentQueue<(string name, bool state)> _groupStateChanges;
         private readonly EcsSystemsBucket[] _buckets;
         private double _totalTime;
@@ -198,7 +236,7 @@ namespace EcsLite.Systems
         public EcsWorld DefaultWorld => _defaultWorld;
         public IReadOnlyDictionary<string, EcsWorld> AllNamedWorlds => _worlds;
 
-        internal EcsSystems(int numThreads, EcsWorld defaultWorld, Dictionary<string, EcsWorld> worlds, List<IEcsSystem> allSystems, Dictionary<string, object> injected, Dictionary<Type, object> injectedSingletons, EcsSystemsBucket[] buckets, Dictionary<string, List<EcsTickedSystem>> groups)
+        internal EcsSystems(int numThreads, EcsWorld defaultWorld, Dictionary<string, EcsWorld> worlds, List<IEcsSystem> allSystems, Dictionary<string, object> injected, Dictionary<Type, object> injectedSingletons, EcsSystemsBucket[] buckets, Dictionary<string, EcsGroup> groups)
         {
             _defaultWorld = defaultWorld;
             _worlds = worlds;
@@ -255,7 +293,7 @@ namespace EcsLite.Systems
             {
                 if (system is IEcsPreInitSystem initSystem)
                 {
-                    initSystem.PreInit(this);
+                    initSystem.PreInit();
 #if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
                     var worldName = CheckForLeakedEntities();
                     if (worldName != null) { throw new Exception($"Empty entity detected in world \"{worldName}\" after {initSystem.GetType().Name}.PreInit()."); }
@@ -266,7 +304,7 @@ namespace EcsLite.Systems
             {
                 if (system is IEcsInitSystem initSystem)
                 {
-                    initSystem.Init(this);
+                    initSystem.Init();
 #if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
                     var worldName = CheckForLeakedEntities();
                     if (worldName != null) { throw new Exception($"Empty entity detected in world \"{worldName}\" after {initSystem.GetType().Name}.Init()."); }
@@ -320,6 +358,38 @@ namespace EcsLite.Systems
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+        public void ToggleGroupNextFrame(string groupName)
+        {
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
+            if (string.IsNullOrWhiteSpace(groupName))
+            {
+                throw new ArgumentException($"Tried to SetGroupNextFrame with invalid name: {groupName}");
+            }
+            if (!_groups.ContainsKey(groupName))
+            {
+                throw new ArgumentException($"Tried to SetGroupNextFrame with invalid name: {groupName}");
+            }
+#endif
+            _groupStateChanges.Enqueue((groupName, !GetGroupState(groupName)));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+        public bool GetGroupState(string groupName)
+        {
+#if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
+            if (string.IsNullOrWhiteSpace(groupName))
+            {
+                throw new ArgumentException($"Tried to SetGroupNextFrame with invalid name: {groupName}");
+            }
+            if (!_groups.ContainsKey(groupName))
+            {
+                throw new ArgumentException($"Tried to SetGroupNextFrame with invalid name: {groupName}");
+            }
+#endif
+            return _groups[groupName].Enabled;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         public void DisableGroupNextFrame(string groupName)
         {
             SetGroupNextFrame(groupName, false);
@@ -350,12 +420,9 @@ namespace EcsLite.Systems
         {
             foreach (var state in _groupStateChanges)
             {
-                if (_groups.TryGetValue(state.name, out var systems))
+                if (_groups.TryGetValue(state.name, out var group))
                 {
-                    foreach (var system in systems)
-                    {
-                        system.Enabled = state.state;
-                    }
+                    group.Enabled = state.state;
                 }
 #if DEBUG
                 else
@@ -418,7 +485,7 @@ namespace EcsLite.Systems
             {
                 if (_allSystems[i] is IEcsDestroySystem destroySystem)
                 {
-                    destroySystem.Destroy(this);
+                    destroySystem.Destroy();
 #if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
                     var worldName = CheckForLeakedEntities();
                     if (worldName != null) { throw new Exception($"Empty entity detected in world \"{worldName}\" after {destroySystem.GetType().Name}.Destroy()."); }
@@ -429,7 +496,7 @@ namespace EcsLite.Systems
             {
                 if (_allSystems[i] is IEcsPostDestroySystem postDestroySystem)
                 {
-                    postDestroySystem.PostDestroy(this);
+                    postDestroySystem.PostDestroy();
 #if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
                     var worldName = CheckForLeakedEntities();
                     if (worldName != null) { throw new Exception($"Empty entity detected in world \"{worldName}\" after {postDestroySystem.GetType().Name}.PostDestroy()."); }

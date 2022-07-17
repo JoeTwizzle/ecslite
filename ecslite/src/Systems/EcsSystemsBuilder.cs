@@ -33,7 +33,7 @@ namespace EcsLite.Systems
         private readonly EcsWorld _defaultWorld;
         private readonly Dictionary<string, EcsWorld> _worlds;
         private readonly List<IEcsSystem> _allSystems;
-        private readonly Dictionary<string, List<EcsTickedSystem>> _groups;
+        private readonly Dictionary<string, EcsGroup> _groups;
         private readonly Dictionary<Type, object> _injectedSingletons;
         private readonly Dictionary<string, object> _injected;
         private readonly List<(IEcsSystem, ConstructorInfo)> _constructors;
@@ -54,7 +54,7 @@ namespace EcsLite.Systems
             _worlds = new Dictionary<string, EcsWorld>(4);
             _allSystems = new List<IEcsSystem>(128);
             _delayedAddQueue = new Queue<SystemCreateInfo>();
-            _groups = new Dictionary<string, List<EcsTickedSystem>>(8);
+            _groups = new Dictionary<string, EcsGroup>(32);
             _currentTickMode = EcsTickMode.Loose;
         }
 
@@ -87,11 +87,11 @@ namespace EcsLite.Systems
             {
                 _currentGroupState = defaultState;
                 _currentGroupName = name;
-                _groups.Add(name, new List<EcsTickedSystem>());
+                _groups.TryAdd(name, new EcsGroup());
             }
             else
             {
-                throw new ArgumentException("The cannot be null or empty", nameof(name));
+                throw new ArgumentException("The group name cannot be null, whitespace or empty", nameof(name));
             }
             return this;
         }
@@ -155,9 +155,8 @@ namespace EcsLite.Systems
                     tickedSystem.TickDelay = info.DelayTime;
                     if (!string.IsNullOrWhiteSpace(info.GroupName))
                     {
-                        tickedSystem.Enabled = info.GroupState;
-
-                        _groups[info.GroupName].Add(tickedSystem);
+                        _groups[info.GroupName].TickedSystems.Add(tickedSystem);
+                        _groups[info.GroupName].Enabled = info.GroupState;
                     }
                 }
             }

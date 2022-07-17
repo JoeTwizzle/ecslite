@@ -79,7 +79,7 @@ namespace EcsLite
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int[] GetSparseIndex()
+        public int[] GetSparseEntities()
         {
             return SparseEntities;
         }
