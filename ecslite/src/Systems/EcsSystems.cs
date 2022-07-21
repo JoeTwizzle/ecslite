@@ -250,7 +250,7 @@ namespace EcsLite.Systems
             {
                 _threads[i] = new Thread(WorkerLoopThreads)
                 {
-                    Name = $"RunSystem Thread {i}",
+                    Name = $"RunSystem Thread {i + 1}",
                     IsBackground = true
                 };
             }
@@ -363,11 +363,11 @@ namespace EcsLite.Systems
 #if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
             if (string.IsNullOrWhiteSpace(groupName))
             {
-                throw new ArgumentException($"Tried to SetGroupNextFrame with invalid name: {groupName}");
+                throw new ArgumentException($"Tried to ToggleGroupNextFrame with invalid name: {groupName}");
             }
             if (!_groups.ContainsKey(groupName))
             {
-                throw new ArgumentException($"Tried to SetGroupNextFrame with invalid name: {groupName}");
+                throw new ArgumentException($"Tried to ToggleGroupNextFrame with invalid name: {groupName}");
             }
 #endif
             _groupStateChanges.Enqueue((groupName, !GetGroupState(groupName)));
