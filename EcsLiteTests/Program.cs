@@ -32,7 +32,7 @@ struct CTORStruct
 }
 class Program
 {
-    static int Main(string[] args)
+    static int Mains(string[] args)
     {
         EcsWorld world = new EcsWorld();
         //world.FilterInc<int>().End();

@@ -212,6 +212,7 @@ namespace EcsLite.Systems
             GroupState = groupState;
         }
     }
+
     public sealed class EcsSystems : IDisposable
     {
         private readonly EcsWorld _defaultWorld;
