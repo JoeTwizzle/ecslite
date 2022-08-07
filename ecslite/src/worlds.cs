@@ -338,6 +338,60 @@ namespace EcsLite
             return count;
         }
 
+        public int GetAllPackedLocalEntities(ref EcsLocalEntity[]? entities)
+        {
+            var count = _entitiesCount - _recycledEntitiesCount;
+            if (entities == null || entities.Length < count)
+            {
+                entities = new EcsLocalEntity[count];
+            }
+            var id = 0;
+            for (int i = 0, iMax = _entitiesCount; i < iMax; i++)
+            {
+                ref var entityData = ref Entities[i];
+                // should we skip empty entities here?
+                if (entityData.Gen > 0 && entityData.ComponentsCount >= 0)
+                {
+                    entities[id++] = this.PackLocalEntity(i);
+                }
+            }
+            return count;
+        }
+
+        public int GetAllPackedEntities(ref EcsEntity[]? entities)
+        {
+            var count = _entitiesCount - _recycledEntitiesCount;
+            if (entities == null || entities.Length < count)
+            {
+                entities = new EcsEntity[count];
+            }
+            var id = 0;
+            for (int i = 0, iMax = _entitiesCount; i < iMax; i++)
+            {
+                ref var entityData = ref Entities[i];
+                // should we skip empty entities here?
+                if (entityData.Gen > 0 && entityData.ComponentsCount >= 0)
+                {
+                    entities[id++] = this.PackEntity(i);
+                }
+            }
+            return count;
+        }
+
+        public int GetAllowedTypes(ref Type[]? types)
+        {
+            var count = _poolsCount;
+            if (types == null || types.Length < count)
+            {
+                types = new Type[count];
+            }
+            for (int i = 0; i < count; i++)
+            {
+                types[i] = _pools[i].GetComponentType();
+            }
+            return _poolsCount;
+        }
+
         public int GetAllPools(ref IEcsPool[]? pools)
         {
             var count = _poolsCount;

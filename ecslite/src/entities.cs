@@ -90,7 +90,7 @@ namespace EcsLite
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool Unpack(this in EcsLocalEntity packed, EcsWorld world, out int entity)
+        public static bool TryUnpack(this in EcsLocalEntity packed, EcsWorld world, out int entity)
         {
             if (!world.IsAlive() || !world.IsEntityAlive(packed.Id) || world.GetEntityGen(packed.Id) != packed.Gen)
             {
@@ -99,6 +99,12 @@ namespace EcsLite
             }
             entity = packed.Id;
             return true;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int Unpack(this in EcsLocalEntity packed)
+        {
+            return packed.Id;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -118,7 +124,7 @@ namespace EcsLite
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool Unpack(this in EcsEntity packedEntity, [NotNullWhen(true)] out EcsWorld? world, out int entity)
+        public static bool TryUnpack(this in EcsEntity packedEntity, [NotNullWhen(true)] out EcsWorld? world, out int entity)
         {
             if (packedEntity.World == null || !packedEntity.World.IsAlive() || !packedEntity.World.IsEntityAlive(packedEntity.Id) || packedEntity.World.GetEntityGen(packedEntity.Id) != packedEntity.Gen)
             {

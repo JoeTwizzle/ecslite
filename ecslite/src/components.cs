@@ -20,6 +20,7 @@ namespace EcsLite
         void Resize(int capacity);
         bool Has(int entity);
         void Del(int entity);
+        object AddRaw(int entity);
         void AddRaw(int entity, object dataRaw);
         object GetRaw(int entity);
         void SetRaw(int entity, object dataRaw);
@@ -137,6 +138,11 @@ namespace EcsLite
 #endif
             ref var data = ref Add(entity);
             data = (T)dataRaw;
+        }
+
+        object IEcsPool.AddRaw(int entity)
+        {
+           return Add(entity);
         }
 
         public T[] GetRawDenseItems()
