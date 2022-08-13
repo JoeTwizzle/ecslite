@@ -90,6 +90,25 @@ namespace EcsLite
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EcsEntity AsGlobal(this EcsLocalEntity entity, EcsWorld world)
+        {
+            EcsEntity packed;
+            packed.World = world;
+            packed.Id = entity.Id;
+            packed.Gen = entity.Gen;
+            return packed;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EcsLocalEntity AsLocal(this EcsEntity entity)
+        {
+            EcsLocalEntity packed;
+            packed.Id = entity.Id;
+            packed.Gen = entity.Gen;
+            return packed;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryUnpack(this in EcsLocalEntity packed, EcsWorld world, out int entity)
         {
             if (!world.IsAlive() || !world.IsEntityAlive(packed.Id) || world.GetEntityGen(packed.Id) != packed.Gen)

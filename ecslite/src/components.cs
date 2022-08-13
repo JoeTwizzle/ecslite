@@ -19,7 +19,7 @@ namespace EcsLite
     {
         void Resize(int capacity);
         bool Has(int entity);
-        void Del(int entity);
+        void Del(int entity, bool destroyWhenEmpty = true);
         object AddRaw(int entity);
         void AddRaw(int entity, object dataRaw);
         object GetRaw(int entity);
@@ -142,7 +142,7 @@ namespace EcsLite
 
         object IEcsPool.AddRaw(int entity)
         {
-           return Add(entity);
+            return Add(entity);
         }
 
         public T[] GetRawDenseItems()
@@ -381,7 +381,7 @@ namespace EcsLite
         /// </summary>
         /// <param name="entity"></param>
         /// <exception cref="InvalidOperationException">Throws in Debug if entity is not alive</exception>
-        public void Del(int entity)
+        public void Del(int entity, bool destroyWhenEmpty = true)
         {
 #if DEBUG && !ECSLITE_NO_SANITIZE_CHECKS
             if (!_world.IsEntityAlive(entity)) { throw new InvalidOperationException("Cant touch destroyed entity."); }
@@ -410,7 +410,7 @@ namespace EcsLite
 #if DEBUG || ECSLITE_WORLD_EVENTS
                 _world.RaiseEntityChangeEvent(entity);
 #endif
-                if (entityData.ComponentsCount == 0)
+                if (destroyWhenEmpty && entityData.ComponentsCount == 0)
                 {
                     _world.DelEntity(entity);
                 }
